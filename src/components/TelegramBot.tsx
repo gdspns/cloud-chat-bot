@@ -13,10 +13,14 @@ export const TelegramBot = () => {
   const [replyText, setReplyText] = useState("");
   const [selectedChatId, setSelectedChatId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isFetching, setIsFetching] = useState(false);
   const [lastUpdateId, setLastUpdateId] = useState<number>(0);
   const { toast } = useToast();
 
   const fetchMessages = async () => {
+    if (isFetching) return; // 防止并发请求
+    
+    setIsFetching(true);
     setIsLoading(true);
     try {
       const updates = await getUpdates(lastUpdateId + 1);
@@ -53,21 +57,27 @@ export const TelegramBot = () => {
       }
     } catch (error: any) {
       const errorMsg = error?.message || "";
-      if (errorMsg.includes("webhook")) {
+      // 409冲突错误不显示toast，静默处理
+      if (errorMsg.includes("Conflict") || errorMsg.includes("409")) {
+        console.log("检测到并发请求冲突，已自动处理");
+      } else if (errorMsg.includes("webhook")) {
         toast({
           title: "错误",
           description: "检测到Webhook冲突。请点击【删除Webhook】按钮后再试。",
           variant: "destructive",
         });
-      } else {
+      } else if (errorMsg.includes("401") || errorMsg.includes("Unauthorized")) {
         toast({
           title: "错误",
-          description: "获取消息失败，请检查机器人令牌。",
+          description: "机器人令牌无效，请检查配置。",
           variant: "destructive",
         });
+      } else {
+        console.error("获取消息失败:", errorMsg);
       }
     } finally {
       setIsLoading(false);
+      setIsFetching(false);
     }
   };
 
@@ -140,9 +150,10 @@ export const TelegramBot = () => {
   };
 
   useEffect(() => {
-    const interval = setInterval(fetchMessages, 3000);
+    fetchMessages(); // 初始加载
+    const interval = setInterval(fetchMessages, 5000); // 每5秒轮询一次
     return () => clearInterval(interval);
-  }, [lastUpdateId, messages]);
+  }, []); // 空依赖项，只在组件挂载时创建一次定时器
 
   const uniqueChats = Array.from(new Set(messages.map(m => m.chatId)));
 
