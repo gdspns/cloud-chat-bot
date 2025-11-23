@@ -57,3 +57,24 @@ export const getUpdates = async (offset?: number) => {
 export const sendGreeting = async (chatId: string | number) => {
   return sendMessage(chatId, telegramConfig.greetingMessage);
 };
+
+export const deleteWebhook = async () => {
+  try {
+    const response = await fetch(
+      `${TELEGRAM_API}${telegramConfig.botToken}/deleteWebhook`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      }
+    );
+    
+    if (!response.ok) {
+      throw new Error(`Failed to delete webhook: ${response.statusText}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error("Error deleting webhook:", error);
+    throw error;
+  }
+};
