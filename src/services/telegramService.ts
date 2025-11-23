@@ -24,14 +24,18 @@ export const sendMessage = async (chatId: string | number, text: string) => {
       }
     );
     
+    const data = await response.json();
+    
     if (!response.ok) {
-      throw new Error(`Failed to send message: ${response.statusText}`);
+      const errorMsg = data.description || response.statusText;
+      console.error("Telegram API Error:", data);
+      throw new Error(`发送失败: ${errorMsg}`);
     }
     
-    return await response.json();
-  } catch (error) {
-    console.error("Error sending message:", error);
-    throw error;
+    return data;
+  } catch (error: any) {
+    console.error("发送消息错误:", error);
+    throw new Error(error.message || "发送消息失败，请检查网络连接");
   }
 };
 
@@ -41,15 +45,17 @@ export const getUpdates = async (offset?: number) => {
     if (offset) url.searchParams.set("offset", offset.toString());
     
     const response = await fetch(url.toString());
+    const data = await response.json();
     
     if (!response.ok) {
-      throw new Error(`Failed to get updates: ${response.statusText}`);
+      const errorMsg = data.description || response.statusText;
+      console.error("Telegram API Error:", data);
+      throw new Error(errorMsg);
     }
     
-    const data = await response.json();
     return data.result;
-  } catch (error) {
-    console.error("Error getting updates:", error);
+  } catch (error: any) {
+    console.error("获取更新错误:", error);
     throw error;
   }
 };
