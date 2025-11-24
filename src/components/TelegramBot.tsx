@@ -19,7 +19,28 @@ export const TelegramBot = () => {
   const [botToken, setBotToken] = useState(telegramConfig.botToken);
   const [personalUserId, setPersonalUserId] = useState(telegramConfig.personalUserId);
   const [greetingMessage, setGreetingMessage] = useState(telegramConfig.greetingMessage);
+  const [enableSound, setEnableSound] = useState(true);
   const { toast } = useToast();
+
+  // 创建消息提示音
+  const playNotificationSound = () => {
+    if (!enableSound) return;
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+    
+    oscillator.frequency.value = 800;
+    oscillator.type = 'sine';
+    
+    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+    
+    oscillator.start(audioContext.currentTime);
+    oscillator.stop(audioContext.currentTime + 0.3);
+  };
 
   const fetchMessages = async () => {
     if (isFetching) return; // 防止并发请求
@@ -52,6 +73,9 @@ export const TelegramBot = () => {
           const uniqueNewMessages = newMessages.filter(m => !existingMessageIds.has(m.id));
           
           if (uniqueNewMessages.length > 0) {
+            // 播放提示音
+            playNotificationSound();
+            
             // Auto-send greeting to new chats if enabled
             if (telegramConfig.enableAutoGreeting) {
               const uniqueChatIds = [...new Set(uniqueNewMessages.map(m => m.chatId))];
@@ -260,6 +284,16 @@ export const TelegramBot = () => {
           <Card className="p-4 bg-muted/30">
             <h3 className="font-semibold mb-3 text-sm">配置信息</h3>
             <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs text-muted-foreground">消息提示音</label>
+                <Button
+                  variant={enableSound ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setEnableSound(!enableSound)}
+                >
+                  {enableSound ? "已开启" : "已关闭"}
+                </Button>
+              </div>
               <div>
                 <label className="text-xs text-muted-foreground">机器人令牌 (Bot Token)</label>
                 <Input
