@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -14,10 +14,11 @@ export const TelegramBot = () => {
   const [selectedChatId, setSelectedChatId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isFetching, setIsFetching] = useState(false);
-  const [lastUpdateId, setLastUpdateId] = useState<number>(0);
-  const [greetedChats, setGreetedChats] = useState<Set<number>>(new Set());
+  const lastUpdateIdRef = useRef<number>(0);
+  const greetedChatsRef = useRef<Set<number>>(new Set());
   const [botToken, setBotToken] = useState(telegramConfig.botToken);
   const [personalUserId, setPersonalUserId] = useState(telegramConfig.personalUserId);
+  const [greetingMessage, setGreetingMessage] = useState(telegramConfig.greetingMessage);
   const { toast } = useToast();
 
   const fetchMessages = async () => {
@@ -26,13 +27,13 @@ export const TelegramBot = () => {
     setIsFetching(true);
     setIsLoading(true);
     try {
-      const updates = await getUpdates(lastUpdateId + 1);
+      const updates = await getUpdates(lastUpdateIdRef.current + 1);
       
       const newMessages: TelegramMessage[] = updates
         .filter((update: any) => update.message)
         .map((update: any) => {
-          if (update.update_id > lastUpdateId) {
-            setLastUpdateId(update.update_id);
+          if (update.update_id > lastUpdateIdRef.current) {
+            lastUpdateIdRef.current = update.update_id;
           }
           
           return {
@@ -46,23 +47,25 @@ export const TelegramBot = () => {
 
       if (newMessages.length > 0) {
         // 过滤掉已存在的消息，防止重复
-        const existingMessageIds = new Set(messages.map(m => m.id));
-        const uniqueNewMessages = newMessages.filter(m => !existingMessageIds.has(m.id));
-        
-        if (uniqueNewMessages.length > 0) {
-          setMessages((prev) => [...prev, ...uniqueNewMessages]);
+        setMessages((prev) => {
+          const existingMessageIds = new Set(prev.map(m => m.id));
+          const uniqueNewMessages = newMessages.filter(m => !existingMessageIds.has(m.id));
           
-          // Auto-send greeting to new chats if enabled
-          if (telegramConfig.enableAutoGreeting) {
-            const uniqueChatIds = [...new Set(uniqueNewMessages.map(m => m.chatId))];
-            uniqueChatIds.forEach(chatId => {
-              if (!greetedChats.has(chatId)) {
-                sendGreeting(chatId);
-                setGreetedChats(prev => new Set([...prev, chatId]));
-              }
-            });
+          if (uniqueNewMessages.length > 0) {
+            // Auto-send greeting to new chats if enabled
+            if (telegramConfig.enableAutoGreeting) {
+              const uniqueChatIds = [...new Set(uniqueNewMessages.map(m => m.chatId))];
+              uniqueChatIds.forEach(chatId => {
+                if (!greetedChatsRef.current.has(chatId)) {
+                  sendGreeting(chatId);
+                  greetedChatsRef.current.add(chatId);
+                }
+              });
+            }
+            return [...prev, ...uniqueNewMessages];
           }
-        }
+          return prev;
+        });
       }
     } catch (error: any) {
       const errorMsg = error?.message || "";
@@ -122,7 +125,7 @@ export const TelegramBot = () => {
       
       // 将自己发送的消息添加到消息列表
       const sentMessage: TelegramMessage = {
-        id: Date.now(),
+        id: Date.now() + Math.random(), // 使用随机数确保唯一性
         from: "我",
         text: replyText,
         timestamp: Date.now(),
@@ -156,7 +159,7 @@ export const TelegramBot = () => {
 
     try {
       await sendGreeting(selectedChatId);
-      setGreetedChats(prev => new Set([...prev, selectedChatId]));
+      greetedChatsRef.current.add(selectedChatId);
       toast({
         title: "成功",
         description: "问候消息发送成功！",
@@ -173,6 +176,7 @@ export const TelegramBot = () => {
   const handleUpdateConfig = () => {
     telegramConfig.botToken = botToken;
     telegramConfig.personalUserId = personalUserId;
+    telegramConfig.greetingMessage = greetingMessage;
     toast({
       title: "成功",
       description: "配置已更新！",
@@ -228,7 +232,7 @@ export const TelegramBot = () => {
               {messages
                 .filter((msg) => !selectedChatId || msg.chatId === selectedChatId)
                 .map((msg) => (
-                  <div key={msg.id} className="mb-3 p-2 bg-muted rounded">
+                  <div key={`${msg.chatId}-${msg.id}`} className="mb-3 p-2 bg-muted rounded">
                     <div className="text-sm font-medium">{msg.from}</div>
                     <div className="text-sm">{msg.text}</div>
                     <div className="text-xs text-muted-foreground">
@@ -271,6 +275,15 @@ export const TelegramBot = () => {
                   placeholder="输入个人用户ID..."
                   value={personalUserId}
                   onChange={(e) => setPersonalUserId(e.target.value)}
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground">欢迎消息 (Greeting Message)</label>
+                <Input
+                  placeholder="输入欢迎消息..."
+                  value={greetingMessage}
+                  onChange={(e) => setGreetingMessage(e.target.value)}
                   className="mt-1"
                 />
               </div>
