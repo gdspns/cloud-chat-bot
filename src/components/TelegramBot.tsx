@@ -22,24 +22,34 @@ export const TelegramBot = () => {
   const [enableSound, setEnableSound] = useState(true);
   const { toast } = useToast();
 
-  // 创建消息提示音
+  // 创建消息提示音 - 模仿QQ双音效果
   const playNotificationSound = () => {
     if (!enableSound) return;
     const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-    const oscillator = audioContext.createOscillator();
-    const gainNode = audioContext.createGain();
     
-    oscillator.connect(gainNode);
-    gainNode.connect(audioContext.destination);
+    // 第一声
+    const oscillator1 = audioContext.createOscillator();
+    const gainNode1 = audioContext.createGain();
+    oscillator1.connect(gainNode1);
+    gainNode1.connect(audioContext.destination);
+    oscillator1.frequency.value = 800;
+    oscillator1.type = 'sine';
+    gainNode1.gain.setValueAtTime(0.6, audioContext.currentTime);
+    gainNode1.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+    oscillator1.start(audioContext.currentTime);
+    oscillator1.stop(audioContext.currentTime + 0.1);
     
-    oscillator.frequency.value = 800;
-    oscillator.type = 'sine';
-    
-    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
-    
-    oscillator.start(audioContext.currentTime);
-    oscillator.stop(audioContext.currentTime + 0.3);
+    // 第二声（稍微延迟）
+    const oscillator2 = audioContext.createOscillator();
+    const gainNode2 = audioContext.createGain();
+    oscillator2.connect(gainNode2);
+    gainNode2.connect(audioContext.destination);
+    oscillator2.frequency.value = 1000;
+    oscillator2.type = 'sine';
+    gainNode2.gain.setValueAtTime(0.6, audioContext.currentTime + 0.15);
+    gainNode2.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.25);
+    oscillator2.start(audioContext.currentTime + 0.15);
+    oscillator2.stop(audioContext.currentTime + 0.25);
   };
 
   const fetchMessages = async () => {
