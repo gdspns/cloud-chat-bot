@@ -15,6 +15,9 @@ export const TelegramBot = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isFetching, setIsFetching] = useState(false);
   const [lastUpdateId, setLastUpdateId] = useState<number>(0);
+  const [greetedChats, setGreetedChats] = useState<Set<number>>(new Set());
+  const [botToken, setBotToken] = useState(telegramConfig.botToken);
+  const [personalUserId, setPersonalUserId] = useState(telegramConfig.personalUserId);
   const { toast } = useToast();
 
   const fetchMessages = async () => {
@@ -42,17 +45,23 @@ export const TelegramBot = () => {
         });
 
       if (newMessages.length > 0) {
-        setMessages((prev) => [...prev, ...newMessages]);
+        // 过滤掉已存在的消息，防止重复
+        const existingMessageIds = new Set(messages.map(m => m.id));
+        const uniqueNewMessages = newMessages.filter(m => !existingMessageIds.has(m.id));
         
-        // Auto-send greeting to new chats if enabled
-        if (telegramConfig.enableAutoGreeting) {
-          const uniqueChatIds = [...new Set(newMessages.map(m => m.chatId))];
-          uniqueChatIds.forEach(chatId => {
-            const isNewChat = !messages.some(m => m.chatId === chatId);
-            if (isNewChat) {
-              sendGreeting(chatId);
-            }
-          });
+        if (uniqueNewMessages.length > 0) {
+          setMessages((prev) => [...prev, ...uniqueNewMessages]);
+          
+          // Auto-send greeting to new chats if enabled
+          if (telegramConfig.enableAutoGreeting) {
+            const uniqueChatIds = [...new Set(uniqueNewMessages.map(m => m.chatId))];
+            uniqueChatIds.forEach(chatId => {
+              if (!greetedChats.has(chatId)) {
+                sendGreeting(chatId);
+                setGreetedChats(prev => new Set([...prev, chatId]));
+              }
+            });
+          }
         }
       }
     } catch (error: any) {
@@ -110,6 +119,17 @@ export const TelegramBot = () => {
 
     try {
       await sendMessage(selectedChatId, replyText);
+      
+      // 将自己发送的消息添加到消息列表
+      const sentMessage: TelegramMessage = {
+        id: Date.now(),
+        from: "我",
+        text: replyText,
+        timestamp: Date.now(),
+        chatId: selectedChatId,
+      };
+      setMessages((prev) => [...prev, sentMessage]);
+      
       setReplyText("");
       toast({
         title: "成功",
@@ -136,6 +156,7 @@ export const TelegramBot = () => {
 
     try {
       await sendGreeting(selectedChatId);
+      setGreetedChats(prev => new Set([...prev, selectedChatId]));
       toast({
         title: "成功",
         description: "问候消息发送成功！",
@@ -147,6 +168,15 @@ export const TelegramBot = () => {
         variant: "destructive",
       });
     }
+  };
+
+  const handleUpdateConfig = () => {
+    telegramConfig.botToken = botToken;
+    telegramConfig.personalUserId = personalUserId;
+    toast({
+      title: "成功",
+      description: "配置已更新！",
+    });
   };
 
   useEffect(() => {
@@ -210,16 +240,45 @@ export const TelegramBot = () => {
           </Card>
         </div>
 
-        <div className="flex gap-2">
-          <Input
-            placeholder="输入回复消息..."
-            value={replyText}
-            onChange={(e) => setReplyText(e.target.value)}
-            onKeyPress={(e) => e.key === "Enter" && handleSendReply()}
-          />
-          <Button onClick={handleSendReply}>
-            <Send className="h-4 w-4" />
-          </Button>
+        <div className="space-y-4">
+          <div className="flex gap-2">
+            <Input
+              placeholder="输入回复消息..."
+              value={replyText}
+              onChange={(e) => setReplyText(e.target.value)}
+              onKeyPress={(e) => e.key === "Enter" && handleSendReply()}
+            />
+            <Button onClick={handleSendReply}>
+              <Send className="h-4 w-4" />
+            </Button>
+          </div>
+
+          <Card className="p-4 bg-muted/30">
+            <h3 className="font-semibold mb-3 text-sm">配置信息</h3>
+            <div className="space-y-2">
+              <div>
+                <label className="text-xs text-muted-foreground">机器人令牌 (Bot Token)</label>
+                <Input
+                  placeholder="输入机器人令牌..."
+                  value={botToken}
+                  onChange={(e) => setBotToken(e.target.value)}
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground">个人用户ID (Personal User ID)</label>
+                <Input
+                  placeholder="输入个人用户ID..."
+                  value={personalUserId}
+                  onChange={(e) => setPersonalUserId(e.target.value)}
+                  className="mt-1"
+                />
+              </div>
+              <Button onClick={handleUpdateConfig} variant="secondary" size="sm" className="w-full">
+                更新配置
+              </Button>
+            </div>
+          </Card>
         </div>
       </Card>
     </div>
