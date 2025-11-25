@@ -84,3 +84,35 @@ export const deleteWebhook = async () => {
     throw error;
   }
 };
+
+// 处理来自个人账户的命令消息
+export const processCommandMessage = (message: string, lastChatId: number | null): {
+  isCommand: boolean;
+  targetChatId?: number;
+  messageText?: string;
+  commandType?: 'reply' | 'quickReply';
+} => {
+  // 命令格式1: /reply <chatId> <message>
+  const replyMatch = message.match(/^\/reply\s+(\d+)\s+(.+)$/s);
+  if (replyMatch) {
+    return {
+      isCommand: true,
+      commandType: 'reply',
+      targetChatId: parseInt(replyMatch[1]),
+      messageText: replyMatch[2]
+    };
+  }
+
+  // 命令格式2: /r <message> (回复最近聊天)
+  const quickReplyMatch = message.match(/^\/r\s+(.+)$/s);
+  if (quickReplyMatch && lastChatId) {
+    return {
+      isCommand: true,
+      commandType: 'quickReply',
+      targetChatId: lastChatId,
+      messageText: quickReplyMatch[1]
+    };
+  }
+
+  return { isCommand: false };
+};
