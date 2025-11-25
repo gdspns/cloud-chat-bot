@@ -6,7 +6,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { sendMessage, getUpdates, sendGreeting, deleteWebhook, processCommandMessage, TelegramMessage } from "@/services/telegramService";
+import { sendMessage, getUpdates, sendGreeting, deleteWebhook, forwardMessageToPersonal, processPersonalMessage, TelegramMessage } from "@/services/telegramService";
 import { telegramConfig } from "@/config/telegram";
 import { Send, RefreshCw, Settings } from "lucide-react";
 
@@ -116,21 +116,26 @@ export const TelegramBot = () => {
         const fromUserId = message.from.id;
         const chatId = message.chat.id;
         const messageText = message.text || "";
+        const fromName = message.from.first_name || message.from.username || "未知用户";
         
-        // 检查是否来自配置的个人用户ID的命令
-        if (fromUserId.toString() === personalUserId && messageText.startsWith('/')) {
-          const commandResult = processCommandMessage(messageText, lastActiveChatIdRef.current);
+        // 检查是否来自配置的个人用户ID
+        if (fromUserId.toString() === personalUserId) {
+          const commandResult = processPersonalMessage(messageText, lastActiveChatIdRef.current);
           
           if (commandResult.isCommand) {
-            // 执行命令：发送消息到目标聊天
+            // 执行命令或直接回复：发送消息到目标聊天
             try {
               await sendMessage(commandResult.targetChatId!, commandResult.messageText!);
               
               // 添加系统消息到消息列表
+              const actionText = commandResult.commandType === 'directReply' 
+                ? `✓ 已通过APP直接回复聊天 ${commandResult.targetChatId}`
+                : `✓ 已通过APP命令回复聊天 ${commandResult.targetChatId}`;
+              
               newMessages.push({
                 id: Date.now() + Math.random(),
                 from: "系统",
-                text: `✓ 已通过APP命令回复聊天 ${commandResult.targetChatId}: ${commandResult.messageText}`,
+                text: `${actionText}: ${commandResult.messageText}`,
                 timestamp: Date.now(),
                 chatId: commandResult.targetChatId!,
               });
@@ -139,34 +144,43 @@ export const TelegramBot = () => {
               lastActiveChatIdRef.current = commandResult.targetChatId!;
               
               toast({
-                title: "命令执行成功",
+                title: "回复成功",
                 description: `已回复聊天 ${commandResult.targetChatId}`,
               });
             } catch (error) {
-              console.error("执行命令失败:", error);
+              console.error("执行回复失败:", error);
               toast({
-                title: "命令执行失败",
+                title: "回复失败",
                 description: "发送消息失败，请重试",
                 variant: "destructive",
               });
             }
             continue; // 跳过将命令消息添加到消息列表
           }
+        } else {
+          // 来自其他用户的消息
+          // 自动转发到个人账户
+          if (telegramConfig.enableMessageForwarding) {
+            try {
+              await forwardMessageToPersonal(chatId, fromName, messageText);
+              console.log(`已转发消息到个人账户: 来自聊天 ${chatId}`);
+            } catch (error) {
+              console.error("转发消息失败:", error);
+            }
+          }
+          
+          // 更新最后活跃的聊天ID
+          lastActiveChatIdRef.current = chatId;
         }
         
-        // 普通消息，添加到列表
+        // 添加普通消息到列表
         newMessages.push({
           id: message.message_id,
-          from: message.from.first_name || message.from.username,
+          from: fromName,
           text: messageText,
           timestamp: message.date * 1000,
           chatId: chatId,
         });
-        
-        // 更新最后活跃的聊天ID（排除个人用户自己）
-        if (fromUserId.toString() !== personalUserId) {
-          lastActiveChatIdRef.current = chatId;
-        }
       }
 
       if (newMessages.length > 0) {
@@ -482,16 +496,18 @@ export const TelegramBot = () => {
           </div>
           
           <Card className="p-3 bg-muted/30">
-            <h4 className="text-xs font-semibold mb-2">💡 APP命令提示</h4>
+            <h4 className="text-xs font-semibold mb-2">💡 APP使用说明</h4>
             <div className="text-xs space-y-1 text-muted-foreground">
-              <p>在Telegram APP中给机器人发送以下命令：</p>
-              <p className="font-mono bg-background px-2 py-1 rounded">
+              <p className="font-semibold text-primary">📱 自动转发模式已启用</p>
+              <p>• 别人给机器人发消息时，会自动转发到您的APP</p>
+              <p>• 直接在APP中回复机器人即可回复对方</p>
+              <p>• 也可使用命令格式：</p>
+              <p className="font-mono bg-background px-2 py-0.5 rounded mt-1">
                 /reply &lt;聊天ID&gt; &lt;消息&gt;
               </p>
-              <p className="font-mono bg-background px-2 py-1 rounded">
-                /r &lt;消息&gt; (回复最近聊天)
+              <p className="font-mono bg-background px-2 py-0.5 rounded">
+                /r &lt;消息&gt;
               </p>
-              <p className="text-xs mt-1">示例: /reply 123456 你好</p>
             </div>
           </Card>
         </div>
