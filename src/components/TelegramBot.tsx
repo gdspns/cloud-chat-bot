@@ -6,7 +6,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { sendMessage, getUpdates, sendGreeting, deleteWebhook, TelegramMessage } from "@/services/telegramService";
+import { sendMessage, getUpdates, sendGreeting, deleteWebhook, processCommandMessage, TelegramMessage } from "@/services/telegramService";
 import { telegramConfig } from "@/config/telegram";
 import { Send, RefreshCw, Settings } from "lucide-react";
 
@@ -25,6 +25,7 @@ export const TelegramBot = () => {
   const [soundType, setSoundType] = useState<"qq" | "ding" | "bell">("qq");
   const [unreadChats, setUnreadChats] = useState<Set<number>>(new Set());
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const lastActiveChatIdRef = useRef<number | null>(null);
   const { toast } = useToast();
 
   // 创建消息提示音 - 支持多种音效
@@ -102,21 +103,71 @@ export const TelegramBot = () => {
     try {
       const updates = await getUpdates(lastUpdateIdRef.current + 1);
       
-      const newMessages: TelegramMessage[] = updates
-        .filter((update: any) => update.message)
-        .map((update: any) => {
-          if (update.update_id > lastUpdateIdRef.current) {
-            lastUpdateIdRef.current = update.update_id;
-          }
+      const newMessages: TelegramMessage[] = [];
+      
+      for (const update of updates) {
+        if (!update.message) continue;
+        
+        if (update.update_id > lastUpdateIdRef.current) {
+          lastUpdateIdRef.current = update.update_id;
+        }
+        
+        const message = update.message;
+        const fromUserId = message.from.id;
+        const chatId = message.chat.id;
+        const messageText = message.text || "";
+        
+        // 检查是否来自配置的个人用户ID的命令
+        if (fromUserId.toString() === personalUserId && messageText.startsWith('/')) {
+          const commandResult = processCommandMessage(messageText, lastActiveChatIdRef.current);
           
-          return {
-            id: update.message.message_id,
-            from: update.message.from.first_name || update.message.from.username,
-            text: update.message.text || "",
-            timestamp: update.message.date * 1000,
-            chatId: update.message.chat.id,
-          };
+          if (commandResult.isCommand) {
+            // 执行命令：发送消息到目标聊天
+            try {
+              await sendMessage(commandResult.targetChatId!, commandResult.messageText!);
+              
+              // 添加系统消息到消息列表
+              newMessages.push({
+                id: Date.now() + Math.random(),
+                from: "系统",
+                text: `✓ 已通过APP命令回复聊天 ${commandResult.targetChatId}: ${commandResult.messageText}`,
+                timestamp: Date.now(),
+                chatId: commandResult.targetChatId!,
+              });
+              
+              // 更新最后活跃的聊天ID
+              lastActiveChatIdRef.current = commandResult.targetChatId!;
+              
+              toast({
+                title: "命令执行成功",
+                description: `已回复聊天 ${commandResult.targetChatId}`,
+              });
+            } catch (error) {
+              console.error("执行命令失败:", error);
+              toast({
+                title: "命令执行失败",
+                description: "发送消息失败，请重试",
+                variant: "destructive",
+              });
+            }
+            continue; // 跳过将命令消息添加到消息列表
+          }
+        }
+        
+        // 普通消息，添加到列表
+        newMessages.push({
+          id: message.message_id,
+          from: message.from.first_name || message.from.username,
+          text: messageText,
+          timestamp: message.date * 1000,
+          chatId: chatId,
         });
+        
+        // 更新最后活跃的聊天ID（排除个人用户自己）
+        if (fromUserId.toString() !== personalUserId) {
+          lastActiveChatIdRef.current = chatId;
+        }
+      }
 
       if (newMessages.length > 0) {
         // 过滤掉已存在的消息，防止重复
@@ -392,7 +443,14 @@ export const TelegramBot = () => {
           </Card>
 
           <Card className="p-4 md:col-span-2">
-            <h3 className="font-semibold mb-2">消息记录</h3>
+            <h3 className="font-semibold mb-2">
+              消息记录
+              {lastActiveChatIdRef.current && (
+                <span className="text-xs text-muted-foreground ml-2">
+                  (最近活跃: {lastActiveChatIdRef.current})
+                </span>
+              )}
+            </h3>
             <ScrollArea className="h-40">
               {messages
                 .filter((msg) => !selectedChatId || msg.chatId === selectedChatId)
@@ -410,16 +468,32 @@ export const TelegramBot = () => {
           </Card>
         </div>
 
-        <div className="flex gap-2">
-          <Input
-            placeholder="输入回复消息..."
-            value={replyText}
-            onChange={(e) => setReplyText(e.target.value)}
-            onKeyPress={(e) => e.key === "Enter" && handleSendReply()}
-          />
-          <Button onClick={handleSendReply}>
-            <Send className="h-4 w-4" />
-          </Button>
+        <div className="space-y-2">
+          <div className="flex gap-2">
+            <Input
+              placeholder="输入回复消息..."
+              value={replyText}
+              onChange={(e) => setReplyText(e.target.value)}
+              onKeyPress={(e) => e.key === "Enter" && handleSendReply()}
+            />
+            <Button onClick={handleSendReply}>
+              <Send className="h-4 w-4" />
+            </Button>
+          </div>
+          
+          <Card className="p-3 bg-muted/30">
+            <h4 className="text-xs font-semibold mb-2">💡 APP命令提示</h4>
+            <div className="text-xs space-y-1 text-muted-foreground">
+              <p>在Telegram APP中给机器人发送以下命令：</p>
+              <p className="font-mono bg-background px-2 py-1 rounded">
+                /reply &lt;聊天ID&gt; &lt;消息&gt;
+              </p>
+              <p className="font-mono bg-background px-2 py-1 rounded">
+                /r &lt;消息&gt; (回复最近聊天)
+              </p>
+              <p className="text-xs mt-1">示例: /reply 123456 你好</p>
+            </div>
+          </Card>
         </div>
       </Card>
     </div>
