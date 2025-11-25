@@ -16,6 +16,9 @@ export const telegramConfig = {
   
   // Enable auto greeting when someone joins
   enableAutoGreeting: true,
+  
+  // Enable automatic message forwarding to personal account
+  enableMessageForwarding: true,
 };
 
 export const updateConfig = (updates: Partial<typeof telegramConfig>) => {

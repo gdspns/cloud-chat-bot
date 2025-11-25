@@ -85,12 +85,25 @@ export const deleteWebhook = async () => {
   }
 };
 
-// 处理来自个人账户的命令消息
-export const processCommandMessage = (message: string, lastChatId: number | null): {
+// 转发消息到个人账户
+export const forwardMessageToPersonal = async (
+  fromChatId: number,
+  fromName: string,
+  messageText: string
+) => {
+  const forwardText = `📩 新消息来自聊天 ${fromChatId}\n👤 发送者: ${fromName}\n\n${messageText}\n\n💬 直接回复此消息即可回复对方`;
+  return sendMessage(telegramConfig.personalUserId, forwardText);
+};
+
+// 处理来自个人账户的消息（包括命令和普通回复）
+export const processPersonalMessage = (
+  message: string,
+  lastChatId: number | null
+): {
   isCommand: boolean;
   targetChatId?: number;
   messageText?: string;
-  commandType?: 'reply' | 'quickReply';
+  commandType?: 'reply' | 'quickReply' | 'directReply';
 } => {
   // 命令格式1: /reply <chatId> <message>
   const replyMatch = message.match(/^\/reply\s+(\d+)\s+(.+)$/s);
@@ -111,6 +124,16 @@ export const processCommandMessage = (message: string, lastChatId: number | null
       commandType: 'quickReply',
       targetChatId: lastChatId,
       messageText: quickReplyMatch[1]
+    };
+  }
+
+  // 直接回复（不是命令，但有最近聊天ID）
+  if (lastChatId && !message.startsWith('/')) {
+    return {
+      isCommand: true,
+      commandType: 'directReply',
+      targetChatId: lastChatId,
+      messageText: message
     };
   }
 
