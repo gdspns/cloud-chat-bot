@@ -3,10 +3,10 @@
 
 export const telegramConfig = {
   // Your Telegram Bot Token from @BotFather
-  botToken: "",
+  botToken: "123456789:ABCdefGHIjklMNOpqrsTUVwxyz",
   
   // Your personal Telegram User ID (to receive messages)
-  personalUserId: "",
+  personalUserId: "12345678",
   
   // Group Chat ID where the bot operates (optional)
   groupChatId: "YOUR_GROUP_CHAT_ID_HERE",
