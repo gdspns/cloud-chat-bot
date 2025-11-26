@@ -10,7 +10,45 @@ import { sendMessage, getUpdates, sendGreeting, deleteWebhook, forwardMessageToP
 import { telegramConfig } from "@/config/telegram";
 import { Send, RefreshCw, Settings } from "lucide-react";
 
-export const TelegramBot = () => {
+interface TelegramBotProps {
+  botToken?: string;
+  personalUserId?: string;
+  greetingMessage?: string;
+  activationId?: string;
+}
+
+export const TelegramBot = ({ 
+  botToken: propBotToken, 
+  personalUserId: propPersonalUserId, 
+  greetingMessage: propGreetingMessage,
+  activationId 
+}: TelegramBotProps = {}) => {
+  // 使用props或从localStorage加载配置
+  const getInitialConfig = () => {
+    if (propBotToken && propPersonalUserId) {
+      return {
+        botToken: propBotToken,
+        personalUserId: propPersonalUserId,
+        greetingMessage: propGreetingMessage || "Hello! 👋 I'm here to help you.",
+      };
+    }
+    
+    if (activationId) {
+      const stored = localStorage.getItem(`bot_config_${activationId}`);
+      if (stored) {
+        return JSON.parse(stored);
+      }
+    }
+    
+    return {
+      botToken: telegramConfig.botToken,
+      personalUserId: telegramConfig.personalUserId,
+      greetingMessage: telegramConfig.greetingMessage,
+    };
+  };
+
+  const initialConfig = getInitialConfig();
+  
   const [messages, setMessages] = useState<TelegramMessage[]>([]);
   const [replyText, setReplyText] = useState("");
   const [selectedChatId, setSelectedChatId] = useState<number | null>(null);
@@ -18,9 +56,9 @@ export const TelegramBot = () => {
   const [isFetching, setIsFetching] = useState(false);
   const lastUpdateIdRef = useRef<number>(0);
   const greetedChatsRef = useRef<Set<number>>(new Set());
-  const [botToken, setBotToken] = useState(telegramConfig.botToken);
-  const [personalUserId, setPersonalUserId] = useState(telegramConfig.personalUserId);
-  const [greetingMessage, setGreetingMessage] = useState(telegramConfig.greetingMessage);
+  const [botToken, setBotToken] = useState(initialConfig.botToken);
+  const [personalUserId, setPersonalUserId] = useState(initialConfig.personalUserId);
+  const [greetingMessage, setGreetingMessage] = useState(initialConfig.greetingMessage);
   const [enableSound, setEnableSound] = useState(true);
   const [soundType, setSoundType] = useState<"qq" | "ding" | "bell">("qq");
   const [unreadChats, setUnreadChats] = useState<Set<number>>(new Set());
@@ -95,6 +133,13 @@ export const TelegramBot = () => {
     scrollToBottom();
   }, [messages]);
 
+  // 更新配置到telegramConfig以供services使用
+  useEffect(() => {
+    telegramConfig.botToken = botToken;
+    telegramConfig.personalUserId = personalUserId;
+    telegramConfig.greetingMessage = greetingMessage;
+  }, [botToken, personalUserId, greetingMessage]);
+
   const fetchMessages = async () => {
     if (isFetching) return; // 防止并发请求
     
@@ -120,7 +165,9 @@ export const TelegramBot = () => {
         
         // 检查是否来自配置的个人用户ID (APP消息不显示在网页控制台)
         if (fromUserId.toString() === personalUserId) {
-          const commandResult = processPersonalMessage(messageText, lastActiveChatIdRef.current);
+          // 获取回复的消息文本（如果是原生回复）
+          const replyToText = message.reply_to_message?.text;
+          const commandResult = processPersonalMessage(messageText, lastActiveChatIdRef.current, replyToText);
           
           if (commandResult.isCommand) {
             // 执行命令或直接回复：发送消息到目标聊天
@@ -130,9 +177,10 @@ export const TelegramBot = () => {
               // 更新最后活跃的聊天ID为回复的目标
               lastActiveChatIdRef.current = commandResult.targetChatId!;
               
+              const replyType = commandResult.commandType === 'nativeReply' ? '(原生回复)' : '';
               toast({
                 title: "APP回复成功",
-                description: `已通过APP回复聊天 ${commandResult.targetChatId}`,
+                description: `已通过APP回复聊天 ${commandResult.targetChatId} ${replyType}`,
               });
             } catch (error) {
               console.error("执行回复失败:", error);
@@ -147,13 +195,11 @@ export const TelegramBot = () => {
         } else {
           // 来自其他用户的消息
           // 自动转发到个人账户
-          if (telegramConfig.enableMessageForwarding) {
-            try {
-              await forwardMessageToPersonal(chatId, fromName, messageText);
-              console.log(`已转发消息到个人账户: 来自聊天 ${chatId}`);
-            } catch (error) {
-              console.error("转发消息失败:", error);
-            }
+          try {
+            await forwardMessageToPersonal(chatId, fromName, messageText, message.message_id);
+            console.log(`已转发消息到个人账户: 来自聊天 ${chatId}`);
+          } catch (error) {
+            console.error("转发消息失败:", error);
           }
           
           // 更新最后活跃的聊天ID
@@ -310,9 +356,20 @@ export const TelegramBot = () => {
   };
 
   const handleUpdateConfig = () => {
+    // 如果有activationId，保存到专用配置
+    if (activationId) {
+      localStorage.setItem(`bot_config_${activationId}`, JSON.stringify({
+        botToken,
+        personalUserId,
+        greetingMessage,
+      }));
+    }
+    
+    // 同步更新telegramConfig
     telegramConfig.botToken = botToken;
     telegramConfig.personalUserId = personalUserId;
     telegramConfig.greetingMessage = greetingMessage;
+    
     toast({
       title: "成功",
       description: "配置已更新！",
@@ -443,7 +500,7 @@ export const TelegramBot = () => {
                 >
                   聊天 {chatId}
                   {unreadChats.has(chatId) && (
-                    <span className="ml-auto w-2 h-2 bg-red-500 rounded-full" />
+                    <span className="ml-2 text-xs bg-red-500 text-white px-2 py-0.5 rounded-full">新</span>
                   )}
                 </Button>
               ))}
@@ -451,61 +508,52 @@ export const TelegramBot = () => {
           </Card>
 
           <Card className="p-4 md:col-span-2">
-            <h3 className="font-semibold mb-2">
-              消息记录
-              {lastActiveChatIdRef.current && (
-                <span className="text-xs text-muted-foreground ml-2">
-                  (最近活跃: {lastActiveChatIdRef.current})
-                </span>
-              )}
-            </h3>
-            <ScrollArea className="h-40">
+            <h3 className="font-semibold mb-2">消息记录</h3>
+            <ScrollArea className="h-64 mb-4 p-2 border rounded">
               {messages
-                .filter((msg) => !selectedChatId || msg.chatId === selectedChatId)
+                .filter((m) => !selectedChatId || m.chatId === selectedChatId)
                 .map((msg) => (
-                  <div key={`${msg.chatId}-${msg.id}`} className="mb-3 p-2 bg-muted rounded">
+                  <div key={`${msg.id}-${msg.timestamp}`} className="mb-3 p-2 bg-secondary rounded">
                     <div className="text-sm font-medium">{msg.from}</div>
                     <div className="text-sm">{msg.text}</div>
                     <div className="text-xs text-muted-foreground">
-                      {new Date(msg.timestamp).toLocaleString('zh-CN')}
+                      {new Date(msg.timestamp).toLocaleString("zh-CN")}
                     </div>
                   </div>
                 ))}
               <div ref={messagesEndRef} />
             </ScrollArea>
-          </Card>
-        </div>
 
-        <div className="space-y-2">
-          <div className="flex gap-2">
-            <Input
-              placeholder="输入回复消息..."
-              value={replyText}
-              onChange={(e) => setReplyText(e.target.value)}
-              onKeyPress={(e) => e.key === "Enter" && handleSendReply()}
-            />
-            <Button onClick={handleSendReply}>
-              <Send className="h-4 w-4" />
-            </Button>
-          </div>
-          
-          <Card className="p-3 bg-muted/30">
-            <h4 className="text-xs font-semibold mb-2">💡 APP使用说明</h4>
-            <div className="text-xs space-y-1 text-muted-foreground">
-              <p className="font-semibold text-primary">📱 自动转发模式已启用</p>
-              <p>• 别人给机器人发消息时，会自动转发到您的APP</p>
-              <p>• 直接在APP中回复机器人即可回复对方</p>
-              <p>• 也可使用命令格式：</p>
-              <p className="font-mono bg-background px-2 py-0.5 rounded mt-1">
-                /reply &lt;聊天ID&gt; &lt;消息&gt;
-              </p>
-              <p className="font-mono bg-background px-2 py-0.5 rounded">
-                /r &lt;消息&gt;
-              </p>
+            <div className="flex gap-2">
+              <Input
+                placeholder="输入回复消息..."
+                value={replyText}
+                onChange={(e) => setReplyText(e.target.value)}
+                onKeyPress={(e) => e.key === "Enter" && handleSendReply()}
+              />
+              <Button onClick={handleSendReply}>
+                <Send className="h-4 w-4" />
+              </Button>
             </div>
           </Card>
         </div>
+
+        <Card className="p-4 mt-4 bg-muted">
+          <h3 className="font-semibold mb-2">💡 在Telegram APP中直接回复</h3>
+          <div className="space-y-2">
+            <div className="text-sm">
+              <p className="text-sm text-muted-foreground">
+                在Telegram APP中使用原生"回复"功能直接回复转发的消息即可!
+              </p>
+              <p className="text-xs text-muted-foreground mt-2">
+                提示：点击要回复的消息，选择"回复"，输入内容发送。机器人会自动识别并回复给正确的人。
+              </p>
+            </div>
+          </div>
+        </Card>
       </Card>
     </div>
   );
 };
+
+export default TelegramBot;
