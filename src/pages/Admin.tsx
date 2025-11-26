@@ -104,24 +104,42 @@ export const Admin = () => {
       createdAt: new Date().toISOString(),
     };
 
-    saveActivations([...activations, newActivation]);
+    const updated = [...activations, newActivation];
+    saveActivations(updated);
     setNewBotToken("");
     setNewPersonalUserId("");
     setNewGreetingMessage("Hello! 👋 I'm here to help you.");
     setNewExpiryDate("");
     
+    const botLink = `${window.location.origin}/bot/${newActivation.id}`;
+    
     toast({
       title: "添加成功",
-      description: "新的机器人激活已添加",
+      description: "新的机器人激活已添加，链接已复制到剪贴板",
     });
+    
+    navigator.clipboard.writeText(botLink);
   };
 
   const handleDeleteActivation = (id: string) => {
     const updated = activations.filter(a => a.id !== id);
     saveActivations(updated);
+    
+    // 同时删除该激活的本地配置
+    localStorage.removeItem(`bot_config_${id}`);
+    
     toast({
       title: "删除成功",
-      description: "激活已删除",
+      description: "激活和相关链接已删除",
+    });
+  };
+
+  const handleCopyLink = (id: string) => {
+    const botLink = `${window.location.origin}/bot/${id}`;
+    navigator.clipboard.writeText(botLink);
+    toast({
+      title: "复制成功",
+      description: "机器人链接已复制到剪贴板",
     });
   };
 
@@ -279,7 +297,15 @@ export const Admin = () => {
                           </div>
                         </div>
                       </div>
-                      <div className="flex gap-2 ml-4">
+                       <div className="flex gap-2 ml-4">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleCopyLink(activation.id)}
+                          title="复制访问链接"
+                        >
+                          📋
+                        </Button>
                         <Button
                           size="sm"
                           variant={activation.isActive ? "destructive" : "default"}

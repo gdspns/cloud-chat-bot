@@ -85,26 +85,47 @@ export const deleteWebhook = async () => {
   }
 };
 
-// 转发消息到个人账户 - 改进格式，包含chatId信息方便回复
+// 转发消息到个人账户 - 包含特殊标记用于回复识别
 export const forwardMessageToPersonal = async (
   fromChatId: number,
   fromName: string,
-  messageText: string
+  messageText: string,
+  messageId: number
 ) => {
-  const forwardText = `📩 来自聊天ID: ${fromChatId}\n👤 发送者: ${fromName}\n📝 消息内容:\n${messageText}\n\n💬 回复指令:\n/reply ${fromChatId} 你的回复内容\n或直接回复(回复最后一条消息)`;
+  const forwardText = `📩 来自: ${fromName}\n💬 ${messageText}\n\n[CHATID:${fromChatId}:MSGID:${messageId}]`;
   return sendMessage(telegramConfig.personalUserId, forwardText);
 };
 
-// 处理来自个人账户的消息（包括命令和普通回复）
+// 从回复的消息中提取chatId
+export const extractChatIdFromReply = (replyText: string): number | null => {
+  const match = replyText.match(/\[CHATID:(\d+):MSGID:\d+\]/);
+  return match ? parseInt(match[1]) : null;
+};
+
+// 处理来自个人账户的消息（支持Telegram原生回复）
 export const processPersonalMessage = (
   message: string,
-  lastChatId: number | null
+  lastChatId: number | null,
+  replyToMessageText?: string
 ): {
   isCommand: boolean;
   targetChatId?: number;
   messageText?: string;
-  commandType?: 'reply' | 'quickReply' | 'directReply';
+  commandType?: 'reply' | 'quickReply' | 'directReply' | 'nativeReply';
 } => {
+  // 优先检测Telegram原生回复
+  if (replyToMessageText) {
+    const chatId = extractChatIdFromReply(replyToMessageText);
+    if (chatId) {
+      return {
+        isCommand: true,
+        commandType: 'nativeReply',
+        targetChatId: chatId,
+        messageText: message
+      };
+    }
+  }
+
   // 命令格式1: /reply <chatId> <message>
   const replyMatch = message.match(/^\/reply\s+(\d+)\s+(.+)$/s);
   if (replyMatch) {
