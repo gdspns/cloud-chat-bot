@@ -85,13 +85,13 @@ export const deleteWebhook = async () => {
   }
 };
 
-// 转发消息到个人账户
+// 转发消息到个人账户 - 改进格式，包含chatId信息方便回复
 export const forwardMessageToPersonal = async (
   fromChatId: number,
   fromName: string,
   messageText: string
 ) => {
-  const forwardText = `📩 新消息来自聊天 ${fromChatId}\n👤 发送者: ${fromName}\n\n${messageText}\n\n💬 直接回复此消息即可回复对方`;
+  const forwardText = `📩 来自聊天ID: ${fromChatId}\n👤 发送者: ${fromName}\n📝 消息内容:\n${messageText}\n\n💬 回复指令:\n/reply ${fromChatId} 你的回复内容\n或直接回复(回复最后一条消息)`;
   return sendMessage(telegramConfig.personalUserId, forwardText);
 };
 
