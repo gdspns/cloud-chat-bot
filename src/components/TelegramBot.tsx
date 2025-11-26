@@ -118,7 +118,7 @@ export const TelegramBot = () => {
         const messageText = message.text || "";
         const fromName = message.from.first_name || message.from.username || "未知用户";
         
-        // 检查是否来自配置的个人用户ID
+        // 检查是否来自配置的个人用户ID (APP消息不显示在网页控制台)
         if (fromUserId.toString() === personalUserId) {
           const commandResult = processPersonalMessage(messageText, lastActiveChatIdRef.current);
           
@@ -127,25 +127,12 @@ export const TelegramBot = () => {
             try {
               await sendMessage(commandResult.targetChatId!, commandResult.messageText!);
               
-              // 添加系统消息到消息列表
-              const actionText = commandResult.commandType === 'directReply' 
-                ? `✓ 已通过APP直接回复聊天 ${commandResult.targetChatId}`
-                : `✓ 已通过APP命令回复聊天 ${commandResult.targetChatId}`;
-              
-              newMessages.push({
-                id: Date.now() + Math.random(),
-                from: "系统",
-                text: `${actionText}: ${commandResult.messageText}`,
-                timestamp: Date.now(),
-                chatId: commandResult.targetChatId!,
-              });
-              
-              // 更新最后活跃的聊天ID
+              // 更新最后活跃的聊天ID为回复的目标
               lastActiveChatIdRef.current = commandResult.targetChatId!;
               
               toast({
-                title: "回复成功",
-                description: `已回复聊天 ${commandResult.targetChatId}`,
+                title: "APP回复成功",
+                description: `已通过APP回复聊天 ${commandResult.targetChatId}`,
               });
             } catch (error) {
               console.error("执行回复失败:", error);
@@ -155,8 +142,8 @@ export const TelegramBot = () => {
                 variant: "destructive",
               });
             }
-            continue; // 跳过将命令消息添加到消息列表
           }
+          continue; // APP自己的消息不显示在网页控制台
         } else {
           // 来自其他用户的消息
           // 自动转发到个人账户
@@ -399,6 +386,13 @@ export const TelegramBot = () => {
                         </SelectContent>
                       </Select>
                     )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={playNotificationSound}
+                    >
+                      测试
+                    </Button>
                   </div>
                 </div>
                 <div>
