@@ -14,16 +14,131 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      bot_activations: {
+        Row: {
+          activation_code: string
+          bot_token: string
+          created_at: string
+          expire_at: string | null
+          greeting_message: string | null
+          id: string
+          is_active: boolean | null
+          is_authorized: boolean | null
+          personal_user_id: string
+          trial_limit: number | null
+          trial_messages_used: number | null
+          updated_at: string
+        }
+        Insert: {
+          activation_code: string
+          bot_token: string
+          created_at?: string
+          expire_at?: string | null
+          greeting_message?: string | null
+          id?: string
+          is_active?: boolean | null
+          is_authorized?: boolean | null
+          personal_user_id: string
+          trial_limit?: number | null
+          trial_messages_used?: number | null
+          updated_at?: string
+        }
+        Update: {
+          activation_code?: string
+          bot_token?: string
+          created_at?: string
+          expire_at?: string | null
+          greeting_message?: string | null
+          id?: string
+          is_active?: boolean | null
+          is_authorized?: boolean | null
+          personal_user_id?: string
+          trial_limit?: number | null
+          trial_messages_used?: number | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      messages: {
+        Row: {
+          bot_activation_id: string
+          content: string
+          created_at: string
+          direction: string
+          id: string
+          is_read: boolean | null
+          telegram_chat_id: number
+          telegram_message_id: number | null
+          telegram_user_name: string | null
+        }
+        Insert: {
+          bot_activation_id: string
+          content: string
+          created_at?: string
+          direction: string
+          id?: string
+          is_read?: boolean | null
+          telegram_chat_id: number
+          telegram_message_id?: number | null
+          telegram_user_name?: string | null
+        }
+        Update: {
+          bot_activation_id?: string
+          content?: string
+          created_at?: string
+          direction?: string
+          id?: string
+          is_read?: boolean | null
+          telegram_chat_id?: number
+          telegram_message_id?: number | null
+          telegram_user_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "messages_bot_activation_id_fkey"
+            columns: ["bot_activation_id"]
+            isOneToOne: false
+            referencedRelation: "bot_activations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_roles: {
+        Row: {
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "user"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +265,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "user"],
+    },
   },
 } as const
