@@ -3,22 +3,26 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { Trash2, Play, Pause, Calendar } from "lucide-react";
+import { Trash2, Play, Pause, Calendar, Copy, CheckCircle, XCircle } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { supabase } from "@/integrations/supabase/client";
 
 interface BotActivation {
   id: string;
-  botToken: string;
-  personalUserId: string;
-  greetingMessage: string;
-  expiryDate: string;
-  isActive: boolean;
-  createdAt: string;
+  bot_token: string;
+  personal_user_id: string;
+  greeting_message: string;
+  activation_code: string;
+  is_active: boolean;
+  is_authorized: boolean;
+  trial_messages_used: number;
+  trial_limit: number;
+  expire_at: string | null;
+  created_at: string;
 }
 
 const ADMIN_USERNAME = "admin";
 const ADMIN_PASSWORD = "qqai18301";
-const STORAGE_KEY = "telegram_bot_activations";
 
 export const Admin = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -27,45 +31,37 @@ export const Admin = () => {
   const [activations, setActivations] = useState<BotActivation[]>([]);
   const [newBotToken, setNewBotToken] = useState("");
   const [newPersonalUserId, setNewPersonalUserId] = useState("");
-  const [newGreetingMessage, setNewGreetingMessage] = useState("Hello! 👋 I'm here to help you.");
+  const [newGreetingMessage, setNewGreetingMessage] = useState("你好！👋 有什么可以帮助你的吗？");
   const [newExpiryDate, setNewExpiryDate] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
     if (isLoggedIn) {
       loadActivations();
-      const interval = setInterval(checkExpiredActivations, 60000); // 每分钟检查一次过期
+      const interval = setInterval(loadActivations, 30000);
       return () => clearInterval(interval);
     }
   }, [isLoggedIn]);
 
-  const loadActivations = () => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      setActivations(parsed);
-    }
-  };
-
-  const saveActivations = (newActivations: BotActivation[]) => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(newActivations));
-    setActivations(newActivations);
-  };
-
-  const checkExpiredActivations = () => {
-    const now = new Date();
-    const updated = activations.map(activation => {
-      if (new Date(activation.expiryDate) < now && activation.isActive) {
-        toast({
-          title: "激活已过期",
-          description: `机器人 ${activation.botToken.substring(0, 10)}... 的激活已过期`,
-          variant: "destructive",
-        });
-        return { ...activation, isActive: false };
+  const loadActivations = async () => {
+    try {
+      const { data, error } = await supabase.functions.invoke('manage-bot', {
+        body: { action: 'list' }
+      });
+      
+      if (error) throw error;
+      if (data.ok) {
+        setActivations(data.data || []);
       }
-      return activation;
-    });
-    saveActivations(updated);
+    } catch (error) {
+      console.error('加载激活列表失败:', error);
+      toast({
+        title: "加载失败",
+        description: "无法获取激活列表",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleLogin = () => {
@@ -84,7 +80,7 @@ export const Admin = () => {
     }
   };
 
-  const handleAddActivation = () => {
+  const handleAddActivation = async () => {
     if (!newBotToken || !newPersonalUserId || !newExpiryDate) {
       toast({
         title: "错误",
@@ -94,75 +90,121 @@ export const Admin = () => {
       return;
     }
 
-    const newActivation: BotActivation = {
-      id: Date.now().toString(),
-      botToken: newBotToken,
-      personalUserId: newPersonalUserId,
-      greetingMessage: newGreetingMessage,
-      expiryDate: newExpiryDate,
-      isActive: true,
-      createdAt: new Date().toISOString(),
-    };
+    setIsLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('manage-bot', {
+        body: {
+          action: 'create',
+          botToken: newBotToken,
+          personalUserId: newPersonalUserId,
+          greetingMessage: newGreetingMessage,
+          expireAt: new Date(newExpiryDate).toISOString(),
+        }
+      });
+      
+      if (error) throw error;
+      if (!data.ok) throw new Error(data.error);
 
-    const updated = [...activations, newActivation];
-    saveActivations(updated);
-    setNewBotToken("");
-    setNewPersonalUserId("");
-    setNewGreetingMessage("Hello! 👋 I'm here to help you.");
-    setNewExpiryDate("");
-    
-    const botLink = `${window.location.origin}/bot/${newActivation.id}`;
-    
-    toast({
-      title: "添加成功",
-      description: "新的机器人激活已添加，链接已复制到剪贴板",
-    });
-    
-    navigator.clipboard.writeText(botLink);
+      const botLink = `${window.location.origin}/activate/${data.data.activation_code}`;
+      navigator.clipboard.writeText(botLink);
+      
+      toast({
+        title: "添加成功",
+        description: "激活链接已复制到剪贴板",
+      });
+      
+      setNewBotToken("");
+      setNewPersonalUserId("");
+      setNewGreetingMessage("你好！👋 有什么可以帮助你的吗？");
+      setNewExpiryDate("");
+      loadActivations();
+    } catch (error: any) {
+      toast({
+        title: "添加失败",
+        description: error.message || "创建激活失败",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleDeleteActivation = (id: string) => {
-    const updated = activations.filter(a => a.id !== id);
-    saveActivations(updated);
-    
-    // 同时删除该激活的本地配置
-    localStorage.removeItem(`bot_config_${id}`);
-    
-    toast({
-      title: "删除成功",
-      description: "激活和相关链接已删除",
-    });
+  const handleDeleteActivation = async (id: string) => {
+    try {
+      const { data, error } = await supabase.functions.invoke('manage-bot', {
+        body: { action: 'delete', id }
+      });
+      
+      if (error) throw error;
+      if (!data.ok) throw new Error(data.error);
+      
+      toast({
+        title: "删除成功",
+        description: "激活和Webhook已删除",
+      });
+      loadActivations();
+    } catch (error: any) {
+      toast({
+        title: "删除失败",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
   };
 
-  const handleCopyLink = (id: string) => {
-    const botLink = `${window.location.origin}/bot/${id}`;
+  const handleCopyLink = (code: string) => {
+    const botLink = `${window.location.origin}/activate/${code}`;
     navigator.clipboard.writeText(botLink);
     toast({
       title: "复制成功",
-      description: "机器人链接已复制到剪贴板",
+      description: "激活链接已复制到剪贴板",
     });
   };
 
-  const handleToggleActive = (id: string) => {
-    const updated = activations.map(a => 
-      a.id === id ? { ...a, isActive: !a.isActive } : a
-    );
-    saveActivations(updated);
-    toast({
-      title: "状态已更新",
-      description: "激活状态已切换",
-    });
+  const handleToggleActive = async (id: string, currentActive: boolean) => {
+    try {
+      const { data, error } = await supabase.functions.invoke('manage-bot', {
+        body: { action: 'toggle', id, isActive: !currentActive }
+      });
+      
+      if (error) throw error;
+      if (!data.ok) throw new Error(data.error);
+      
+      toast({
+        title: "状态已更新",
+        description: currentActive ? "机器人已停止" : "机器人已启动",
+      });
+      loadActivations();
+    } catch (error: any) {
+      toast({
+        title: "操作失败",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
   };
 
-  const handleExtendDate = (id: string, newDate: string) => {
-    const updated = activations.map(a => 
-      a.id === id ? { ...a, expiryDate: newDate } : a
-    );
-    saveActivations(updated);
-    toast({
-      title: "日期已更新",
-      description: "过期日期已延长",
-    });
+  const handleExtendDate = async (id: string, newDate: string) => {
+    try {
+      const { data, error } = await supabase.functions.invoke('manage-bot', {
+        body: { action: 'extend', id, expireAt: new Date(newDate).toISOString() }
+      });
+      
+      if (error) throw error;
+      if (!data.ok) throw new Error(data.error);
+      
+      toast({
+        title: "日期已更新",
+        description: "过期日期已延长",
+      });
+      loadActivations();
+    } catch (error: any) {
+      toast({
+        title: "更新失败",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
   };
 
   if (!isLoggedIn) {
@@ -212,7 +254,7 @@ export const Admin = () => {
         </div>
 
         <Card className="p-6 mb-6">
-          <h2 className="text-xl font-semibold mb-4">添加新的激活</h2>
+          <h2 className="text-xl font-semibold mb-4">添加新的授权</h2>
           <div className="grid md:grid-cols-2 gap-4">
             <div>
               <label className="text-sm font-medium">机器人令牌 *</label>
@@ -251,67 +293,81 @@ export const Admin = () => {
               />
             </div>
           </div>
-          <Button onClick={handleAddActivation} className="mt-4">
-            添加激活
+          <Button onClick={handleAddActivation} className="mt-4" disabled={isLoading}>
+            {isLoading ? "添加中..." : "添加授权"}
           </Button>
         </Card>
 
         <Card className="p-6">
-          <h2 className="text-xl font-semibold mb-4">激活列表</h2>
+          <h2 className="text-xl font-semibold mb-4">授权列表</h2>
           <div className="space-y-4">
             {activations.length === 0 ? (
-              <p className="text-muted-foreground text-center py-8">暂无激活记录</p>
+              <p className="text-muted-foreground text-center py-8">暂无授权记录</p>
             ) : (
               activations.map((activation) => {
-                const isExpired = new Date(activation.expiryDate) < new Date();
+                const isExpired = activation.expire_at && new Date(activation.expire_at) < new Date();
                 return (
                   <Card key={activation.id} className={`p-4 ${isExpired ? 'border-destructive' : ''}`}>
                     <div className="flex justify-between items-start">
                       <div className="flex-1 space-y-2">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span className={`px-2 py-1 rounded text-xs font-semibold ${
-                            activation.isActive && !isExpired 
+                            activation.is_active && !isExpired 
                               ? 'bg-green-500/20 text-green-700 dark:text-green-300' 
                               : 'bg-gray-500/20 text-gray-700 dark:text-gray-300'
                           }`}>
-                            {activation.isActive && !isExpired ? '运行中' : '已停止'}
+                            {activation.is_active && !isExpired ? '运行中' : '已停止'}
                           </span>
+                          {activation.is_authorized ? (
+                            <span className="px-2 py-1 rounded text-xs font-semibold bg-blue-500/20 text-blue-700 dark:text-blue-300 flex items-center gap-1">
+                              <CheckCircle className="h-3 w-3" />
+                              已激活
+                            </span>
+                          ) : (
+                            <span className="px-2 py-1 rounded text-xs font-semibold bg-yellow-500/20 text-yellow-700 dark:text-yellow-300 flex items-center gap-1">
+                              <XCircle className="h-3 w-3" />
+                              待激活
+                            </span>
+                          )}
                           {isExpired && (
                             <span className="px-2 py-1 rounded text-xs font-semibold bg-destructive/20 text-destructive">
                               已过期
                             </span>
                           )}
+                          <span className="px-2 py-1 rounded text-xs font-semibold bg-purple-500/20 text-purple-700 dark:text-purple-300">
+                            试用: {activation.trial_messages_used}/{activation.trial_limit}
+                          </span>
                         </div>
                         <div className="grid md:grid-cols-2 gap-2 text-sm">
                           <div>
-                            <span className="font-medium">机器人令牌:</span> {activation.botToken.substring(0, 15)}...
+                            <span className="font-medium">机器人令牌:</span> {activation.bot_token.substring(0, 15)}...
                           </div>
                           <div>
-                            <span className="font-medium">个人ID:</span> {activation.personalUserId}
+                            <span className="font-medium">个人ID:</span> {activation.personal_user_id}
                           </div>
                           <div>
-                            <span className="font-medium">欢迎消息:</span> {activation.greetingMessage}
+                            <span className="font-medium">激活码:</span> {activation.activation_code}
                           </div>
                           <div>
-                            <span className="font-medium">过期日期:</span> {new Date(activation.expiryDate).toLocaleDateString('zh-CN')}
+                            <span className="font-medium">过期日期:</span> {activation.expire_at ? new Date(activation.expire_at).toLocaleDateString('zh-CN') : '无'}
                           </div>
                         </div>
                       </div>
-                       <div className="flex gap-2 ml-4">
+                      <div className="flex gap-2 ml-4 flex-wrap">
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => handleCopyLink(activation.id)}
-                          title="复制访问链接"
+                          onClick={() => handleCopyLink(activation.activation_code)}
+                          title="复制激活链接"
                         >
-                          📋
+                          <Copy className="h-4 w-4" />
                         </Button>
                         <Button
                           size="sm"
-                          variant={activation.isActive ? "destructive" : "default"}
-                          onClick={() => handleToggleActive(activation.id)}
+                          variant={activation.is_active ? "destructive" : "default"}
+                          onClick={() => handleToggleActive(activation.id, activation.is_active)}
                         >
-                          {activation.isActive ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                          {activation.is_active ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
                         </Button>
                         <Dialog>
                           <DialogTrigger asChild>
@@ -326,7 +382,7 @@ export const Admin = () => {
                             <div className="space-y-4">
                               <Input
                                 type="date"
-                                defaultValue={activation.expiryDate.split('T')[0]}
+                                defaultValue={activation.expire_at ? activation.expire_at.split('T')[0] : ''}
                                 onChange={(e) => {
                                   const newDate = e.target.value;
                                   if (newDate) {
