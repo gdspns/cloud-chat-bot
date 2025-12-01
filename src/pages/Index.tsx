@@ -1,125 +1,329 @@
-import { useNavigate } from "react-router-dom";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { Bot, Shield, Clock, MessageSquare } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { Navbar } from "@/components/Navbar";
+import { ChatSidebar } from "@/components/ChatSidebar";
+import { ChatWindow } from "@/components/ChatWindow";
+import { AddBotDialog } from "@/components/AddBotDialog";
+import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+
+interface Message {
+  id: string;
+  bot_activation_id: string;
+  telegram_chat_id: number;
+  telegram_user_name: string;
+  content: string;
+  direction: string;
+  is_read: boolean;
+  created_at: string;
+}
+
+interface BotActivation {
+  id: string;
+  bot_token: string;
+  personal_user_id: string;
+  greeting_message: string;
+  is_active: boolean;
+  is_authorized: boolean;
+  trial_messages_used: number;
+  trial_limit: number;
+  expire_at: string | null;
+}
+
+interface ChatItem {
+  chatId: number;
+  userName: string;
+  lastMessage: string;
+  lastTime: string;
+  unread: boolean;
+  botId: string;
+}
 
 const Index = () => {
-  const navigate = useNavigate();
+  const { toast } = useToast();
+  const [bots, setBots] = useState<BotActivation[]>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [selectedBotId, setSelectedBotId] = useState<string | null>(null);
+  const [selectedChatId, setSelectedChatId] = useState<number | null>(null);
+  const [showAddBot, setShowAddBot] = useState(false);
+  const [unreadChats, setUnreadChats] = useState<Set<number>>(new Set());
+  const [enableSound, setEnableSound] = useState(true);
+  const [soundType, setSoundType] = useState("qq");
+
+  // 播放提示音
+  const playNotificationSound = useCallback(() => {
+    if (!enableSound) return;
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    
+    if (soundType === "qq") {
+      const oscillator1 = audioContext.createOscillator();
+      const gainNode1 = audioContext.createGain();
+      oscillator1.connect(gainNode1);
+      gainNode1.connect(audioContext.destination);
+      oscillator1.frequency.value = 800;
+      oscillator1.type = 'sine';
+      gainNode1.gain.setValueAtTime(0.6, audioContext.currentTime);
+      gainNode1.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+      oscillator1.start(audioContext.currentTime);
+      oscillator1.stop(audioContext.currentTime + 0.1);
+      
+      const oscillator2 = audioContext.createOscillator();
+      const gainNode2 = audioContext.createGain();
+      oscillator2.connect(gainNode2);
+      gainNode2.connect(audioContext.destination);
+      oscillator2.frequency.value = 1000;
+      oscillator2.type = 'sine';
+      gainNode2.gain.setValueAtTime(0.6, audioContext.currentTime + 0.15);
+      gainNode2.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.25);
+      oscillator2.start(audioContext.currentTime + 0.15);
+      oscillator2.stop(audioContext.currentTime + 0.25);
+    } else if (soundType === "ding") {
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      oscillator.frequency.value = 1200;
+      oscillator.type = 'sine';
+      gainNode.gain.setValueAtTime(0.7, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.4);
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + 0.4);
+    } else if (soundType === "bell") {
+      [600, 800, 1000].forEach((freq, index) => {
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        oscillator.frequency.value = freq;
+        oscillator.type = 'sine';
+        const startTime = audioContext.currentTime + index * 0.1;
+        gainNode.gain.setValueAtTime(0.5, startTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, startTime + 0.15);
+        oscillator.start(startTime);
+        oscillator.stop(startTime + 0.15);
+      });
+    }
+  }, [enableSound, soundType]);
+
+  // 加载本地存储的机器人ID
+  useEffect(() => {
+    const storedBotIds = localStorage.getItem('myBotIds');
+    if (storedBotIds) {
+      loadBots(JSON.parse(storedBotIds));
+    }
+  }, []);
+
+  // 加载机器人列表
+  const loadBots = async (botIds?: string[]) => {
+    try {
+      let query = supabase.from('bot_activations').select('*');
+      
+      if (botIds && botIds.length > 0) {
+        query = query.in('id', botIds);
+      } else {
+        // 如果没有存储的ID，则不显示任何机器人
+        setBots([]);
+        return;
+      }
+      
+      const { data, error } = await query;
+      if (error) throw error;
+      setBots(data as BotActivation[]);
+      
+      // 自动选中第一个机器人
+      if (data && data.length > 0 && !selectedBotId) {
+        setSelectedBotId(data[0].id);
+      }
+    } catch (error) {
+      console.error('加载机器人失败:', error);
+    }
+  };
+
+  // 加载消息
+  useEffect(() => {
+    if (bots.length === 0) return;
+
+    const botIds = bots.map(b => b.id);
+    
+    const loadMessages = async () => {
+      const { data, error } = await supabase
+        .from('messages')
+        .select('*')
+        .in('bot_activation_id', botIds)
+        .order('created_at', { ascending: true });
+
+      if (!error && data) {
+        setMessages(data as Message[]);
+      }
+    };
+
+    loadMessages();
+
+    // 订阅实时消息
+    const channels = botIds.map(botId => {
+      return supabase
+        .channel(`messages-${botId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'messages',
+            filter: `bot_activation_id=eq.${botId}`,
+          },
+          (payload) => {
+            const newMessage = payload.new as Message;
+            setMessages(prev => [...prev, newMessage]);
+            
+            if (newMessage.direction === 'incoming') {
+              playNotificationSound();
+              setUnreadChats(prev => {
+                const updated = new Set(prev);
+                updated.add(newMessage.telegram_chat_id);
+                return updated;
+              });
+            }
+          }
+        )
+        .subscribe();
+    });
+
+    return () => {
+      channels.forEach(channel => supabase.removeChannel(channel));
+    };
+  }, [bots, playNotificationSound]);
+
+  // 处理机器人添加
+  const handleBotAdded = async () => {
+    // 重新获取最新添加的机器人
+    const { data } = await supabase
+      .from('bot_activations')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(1);
+    
+    if (data && data.length > 0) {
+      const newBot = data[0];
+      const storedBotIds = JSON.parse(localStorage.getItem('myBotIds') || '[]');
+      if (!storedBotIds.includes(newBot.id)) {
+        storedBotIds.push(newBot.id);
+        localStorage.setItem('myBotIds', JSON.stringify(storedBotIds));
+      }
+      loadBots(storedBotIds);
+      setSelectedBotId(newBot.id);
+    }
+  };
+
+  // 发送消息
+  const handleSendMessage = async (message: string): Promise<{ trialExceeded?: boolean; error?: string }> => {
+    if (!selectedBotId || !selectedChatId) {
+      return { error: "请选择聊天对象" };
+    }
+
+    try {
+      const { data, error } = await supabase.functions.invoke('send-message', {
+        body: {
+          activationId: selectedBotId,
+          chatId: selectedChatId,
+          message,
+        }
+      });
+
+      if (error) throw error;
+      
+      if (data.trialExceeded) {
+        return { trialExceeded: true };
+      }
+      
+      if (!data.ok) {
+        return { error: data.error };
+      }
+
+      // 更新本地机器人状态（试用次数）
+      setBots(prev => prev.map(bot => {
+        if (bot.id === selectedBotId && !bot.is_authorized) {
+          return { ...bot, trial_messages_used: bot.trial_messages_used + 1 };
+        }
+        return bot;
+      }));
+
+      return {};
+    } catch (error: any) {
+      return { error: error.message };
+    }
+  };
+
+  // 选择聊天
+  const handleSelectChat = (chatId: number) => {
+    setSelectedChatId(chatId);
+    setUnreadChats(prev => {
+      const updated = new Set(prev);
+      updated.delete(chatId);
+      return updated;
+    });
+  };
+
+  // 构建聊天列表
+  const chatItems: ChatItem[] = (() => {
+    const chatMap = new Map<string, ChatItem>();
+    
+    messages
+      .filter(m => m.direction === 'incoming')
+      .forEach(m => {
+        const key = `${m.bot_activation_id}-${m.telegram_chat_id}`;
+        const existing = chatMap.get(key);
+        if (!existing || new Date(m.created_at) > new Date(existing.lastTime)) {
+          chatMap.set(key, {
+            chatId: m.telegram_chat_id,
+            userName: m.telegram_user_name,
+            lastMessage: m.content.substring(0, 30) + (m.content.length > 30 ? '...' : ''),
+            lastTime: new Date(m.created_at).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
+            unread: unreadChats.has(m.telegram_chat_id),
+            botId: m.bot_activation_id,
+          });
+        }
+      });
+    
+    return Array.from(chatMap.values()).sort((a, b) => 
+      new Date(b.lastTime).getTime() - new Date(a.lastTime).getTime()
+    );
+  })();
+
+  const selectedBot = bots.find(b => b.id === selectedBotId) || null;
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Hero Section */}
-      <div className="container mx-auto px-6 py-16 text-center">
-        <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6">
-          <Bot className="h-10 w-10 text-primary" />
-        </div>
-        <h1 className="text-4xl md:text-5xl font-bold mb-4">
-          Telegram 机器人管理平台
-        </h1>
-        <p className="text-xl text-muted-foreground max-w-2xl mx-auto mb-8">
-          7x24小时持续运行，网站控制台与Telegram APP双向无缝聊天
-        </p>
-        <div className="flex gap-4 justify-center">
-          <Button size="lg" onClick={() => navigate("/admin")}>
-            管理后台
-          </Button>
-        </div>
+    <div className="min-h-screen bg-background flex flex-col">
+      <Navbar />
+      
+      <div className="flex-1 flex overflow-hidden">
+        <ChatSidebar
+          bots={bots}
+          chats={chatItems}
+          selectedBotId={selectedBotId}
+          selectedChatId={selectedChatId}
+          onSelectBot={setSelectedBotId}
+          onSelectChat={handleSelectChat}
+          onAddBot={() => setShowAddBot(true)}
+          unreadChats={unreadChats}
+        />
+        
+        <ChatWindow
+          selectedBot={selectedBot}
+          selectedChatId={selectedChatId}
+          messages={messages.filter(m => m.bot_activation_id === selectedBotId)}
+          onSendMessage={handleSendMessage}
+          enableSound={enableSound}
+          onToggleSound={() => setEnableSound(!enableSound)}
+          soundType={soundType}
+          onSoundTypeChange={setSoundType}
+          onTestSound={playNotificationSound}
+        />
       </div>
 
-      {/* Features Section */}
-      <div className="container mx-auto px-6 py-16">
-        <h2 className="text-3xl font-bold text-center mb-12">核心功能</h2>
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <Card className="p-6 text-center">
-            <div className="w-12 h-12 bg-green-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Clock className="h-6 w-6 text-green-500" />
-            </div>
-            <h3 className="font-semibold mb-2">24/7 在线</h3>
-            <p className="text-sm text-muted-foreground">
-              关闭网页后机器人仍持续运行，永不掉线
-            </p>
-          </Card>
-          
-          <Card className="p-6 text-center">
-            <div className="w-12 h-12 bg-blue-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
-              <MessageSquare className="h-6 w-6 text-blue-500" />
-            </div>
-            <h3 className="font-semibold mb-2">双向通信</h3>
-            <p className="text-sm text-muted-foreground">
-              网页控制台与Telegram APP实时同步消息
-            </p>
-          </Card>
-          
-          <Card className="p-6 text-center">
-            <div className="w-12 h-12 bg-purple-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Bot className="h-6 w-6 text-purple-500" />
-            </div>
-            <h3 className="font-semibold mb-2">多机器人支持</h3>
-            <p className="text-sm text-muted-foreground">
-              同时管理多个机器人，消息互不干扰
-            </p>
-          </Card>
-          
-          <Card className="p-6 text-center">
-            <div className="w-12 h-12 bg-orange-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Shield className="h-6 w-6 text-orange-500" />
-            </div>
-            <h3 className="font-semibold mb-2">安全授权</h3>
-            <p className="text-sm text-muted-foreground">
-              令牌验证机制，确保只有授权机器人可使用
-            </p>
-          </Card>
-        </div>
-      </div>
-
-      {/* How It Works */}
-      <div className="container mx-auto px-6 py-16 bg-muted/50">
-        <h2 className="text-3xl font-bold text-center mb-12">使用流程</h2>
-        <div className="max-w-3xl mx-auto">
-          <div className="space-y-6">
-            <div className="flex gap-4 items-start">
-              <div className="w-8 h-8 bg-primary text-primary-foreground rounded-full flex items-center justify-center font-bold shrink-0">
-                1
-              </div>
-              <div>
-                <h3 className="font-semibold">管理员添加授权</h3>
-                <p className="text-muted-foreground">
-                  在管理后台添加机器人令牌并设置有效期，系统自动生成专属激活链接
-                </p>
-              </div>
-            </div>
-            
-            <div className="flex gap-4 items-start">
-              <div className="w-8 h-8 bg-primary text-primary-foreground rounded-full flex items-center justify-center font-bold shrink-0">
-                2
-              </div>
-              <div>
-                <h3 className="font-semibold">用户访问激活链接</h3>
-                <p className="text-muted-foreground">
-                  用户收到激活链接后，输入自己的机器人令牌进行验证激活
-                </p>
-              </div>
-            </div>
-            
-            <div className="flex gap-4 items-start">
-              <div className="w-8 h-8 bg-primary text-primary-foreground rounded-full flex items-center justify-center font-bold shrink-0">
-                3
-              </div>
-              <div>
-                <h3 className="font-semibold">开始使用</h3>
-                <p className="text-muted-foreground">
-                  激活成功后即可在控制台与Telegram用户实时聊天，支持免费试用20条消息
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Footer */}
-      <footer className="container mx-auto px-6 py-8 text-center text-muted-foreground">
-        <p>Telegram 机器人管理平台 © {new Date().getFullYear()}</p>
-      </footer>
+      <AddBotDialog
+        open={showAddBot}
+        onOpenChange={setShowAddBot}
+        onBotAdded={handleBotAdded}
+      />
     </div>
   );
 };
