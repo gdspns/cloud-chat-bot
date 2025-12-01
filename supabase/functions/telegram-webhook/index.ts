@@ -87,13 +87,17 @@ serve(async (req) => {
     // Check if this is a reply from personal user to forward
     if (chatId === personalUserId && message.reply_to_message) {
       // Extract target chat ID from the original forwarded message
+      // Format: [CHATID:xxx:MSGID:xxx]
       const replyText = message.reply_to_message.text || '';
-      const chatIdMatch = replyText.match(/\[CHATID:(\d+)\]/);
+      const chatIdMatch = replyText.match(/\[CHATID:(\d+):MSGID:(\d+)\]/);
       
       if (chatIdMatch) {
         const targetChatId = parseInt(chatIdMatch[1]);
+        const originalMsgId = parseInt(chatIdMatch[2]);
         
-        // Send message to the original user
+        console.log(`Routing reply to chatId: ${targetChatId}, originalMsgId: ${originalMsgId}`);
+        
+        // Send message to the original user (reply to their original message)
         const sendResponse = await fetch(
           `https://api.telegram.org/bot${botToken}/sendMessage`,
           {
@@ -102,15 +106,20 @@ serve(async (req) => {
             body: JSON.stringify({
               chat_id: targetChatId,
               text: text,
+              reply_to_message_id: originalMsgId, // Reply to the original message for context
             }),
           }
         );
 
-        if (sendResponse.ok) {
-          // Store outgoing message
+        const sendResult = await sendResponse.json();
+        console.log('Reply sent result:', JSON.stringify(sendResult, null, 2));
+
+        if (sendResult.ok) {
+          // Store outgoing message with correct chat ID
           await supabase.from('messages').insert({
             bot_activation_id: activation.id,
             telegram_chat_id: targetChatId,
+            telegram_message_id: sendResult.result?.message_id,
             telegram_user_name: '我',
             content: text,
             direction: 'outgoing',
