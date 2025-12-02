@@ -208,11 +208,11 @@ export const ChatWindow = ({
       </div>
 
       {/* 消息列表 */}
-      <ScrollArea className="flex-1 p-4">
+      <ScrollArea className="flex-1 p-4 h-[300px] md:h-[450px]">
         {filteredMessages.map((message) => (
           <div
             key={message.id}
-            className={`mb-3 p-3 rounded-lg max-w-[80%] ${
+            className={`mb-3 p-3 rounded-lg max-w-[80%] md:max-w-[70%] ${
               message.direction === 'outgoing'
                 ? 'ml-auto bg-primary text-primary-foreground'
                 : 'bg-muted'
@@ -241,17 +241,19 @@ export const ChatWindow = ({
       )}
 
       {/* 发送消息 */}
-      <div className="p-4 border-t flex gap-2">
+      <div className="p-4 border-t flex flex-col sm:flex-row gap-2">
         <Input
           placeholder="输入回复消息..."
           value={replyText}
           onChange={(e) => setReplyText(e.target.value)}
-          onKeyPress={(e) => e.key === 'Enter' && handleSend()}
+          onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
           disabled={!canSend}
+          className="flex-1"
         />
         <Button 
           onClick={handleSend} 
           disabled={!canSend || isSending}
+          className="w-full sm:w-auto"
         >
           <Send className="h-4 w-4 mr-1" />
           {isSending ? "..." : "发送"}

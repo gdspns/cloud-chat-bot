@@ -50,7 +50,7 @@ export const ChatSidebar = ({
     : chats;
 
   return (
-    <div className="w-72 border-r bg-muted/30 flex flex-col h-full">
+    <div className="w-full md:w-72 border-r md:border-b-0 border-b bg-muted/30 flex flex-col h-auto md:h-full">
       {/* 添加机器人按钮 */}
       <div className="p-3 border-b">
         <Button onClick={onAddBot} className="w-full" size="sm">
@@ -65,35 +65,43 @@ export const ChatSidebar = ({
           <Bot className="h-3 w-3" />
           我的机器人
         </h3>
-        <ScrollArea className="h-24">
+        <ScrollArea className="h-24 md:h-32">
           <div className="space-y-1">
             {bots.length === 0 ? (
               <p className="text-xs text-muted-foreground text-center py-2">
                 暂无机器人，点击上方按钮添加
               </p>
             ) : (
-              bots.map((bot) => (
-                <Button
-                  key={bot.id}
-                  variant={selectedBotId === bot.id ? "secondary" : "ghost"}
-                  size="sm"
-                  className="w-full justify-start text-xs h-8"
-                  onClick={() => onSelectBot(bot.id)}
-                >
-                  <Bot className="h-3 w-3 mr-2 shrink-0" />
-                  <span className="truncate">
-                    {bot.bot_token.split(':')[0]}...
-                  </span>
-                  {!bot.is_authorized && (
-                    <Badge variant="outline" className="ml-auto text-[10px] px-1">
-                      试用
-                    </Badge>
-                  )}
-                  {bot.is_active && (
-                    <span className="w-2 h-2 bg-green-500 rounded-full ml-1 shrink-0" />
-                  )}
-                </Button>
-              ))
+              bots.map((bot) => {
+                const hasUnreadInBot = chats.some(
+                  chat => chat.botId === bot.id && unreadChats.has(chat.chatId)
+                );
+                return (
+                  <Button
+                    key={bot.id}
+                    variant={selectedBotId === bot.id ? "secondary" : "ghost"}
+                    size="sm"
+                    className={cn(
+                      "w-full justify-start text-xs h-8",
+                      hasUnreadInBot && "animate-pulse ring-2 ring-primary"
+                    )}
+                    onClick={() => onSelectBot(bot.id)}
+                  >
+                    <Bot className="h-3 w-3 mr-2 shrink-0" />
+                    <span className="truncate">
+                      {bot.bot_token.split(':')[0]}...
+                    </span>
+                    {!bot.is_authorized && (
+                      <Badge variant="outline" className="ml-auto text-[10px] px-1">
+                        试用
+                      </Badge>
+                    )}
+                    {bot.is_active && (
+                      <span className="w-2 h-2 bg-green-500 rounded-full ml-1 shrink-0" />
+                    )}
+                  </Button>
+                );
+              })
             )}
           </div>
         </ScrollArea>
