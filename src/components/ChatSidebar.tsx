@@ -50,7 +50,7 @@ export const ChatSidebar = ({
     : chats;
 
   return (
-    <div className="w-full md:w-72 border-r md:border-b-0 border-b bg-muted/30 flex flex-col h-auto md:h-full">
+    <div className="w-full md:w-80 border-r md:border-b-0 border-b bg-muted/30 flex flex-col h-[450px]">
       {/* 添加机器人按钮 */}
       <div className="p-3 border-b">
         <Button onClick={onAddBot} className="w-full" size="sm">
@@ -59,13 +59,13 @@ export const ChatSidebar = ({
         </Button>
       </div>
 
-      {/* 机器人列表 */}
+      {/* 机器人列表 - 固定高度200px并可滚动 */}
       <div className="p-3 border-b">
         <h3 className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1">
           <Bot className="h-3 w-3" />
           我的机器人
         </h3>
-        <ScrollArea className="h-24 md:h-32">
+        <ScrollArea className="h-[200px]">
           <div className="space-y-1">
             {bots.length === 0 ? (
               <p className="text-xs text-muted-foreground text-center py-2">
@@ -107,13 +107,13 @@ export const ChatSidebar = ({
         </ScrollArea>
       </div>
 
-      {/* 聊天列表 */}
-      <div className="flex-1 flex flex-col min-h-0">
+      {/* 聊天列表 - 固定高度200px并可滚动 */}
+      <div className="flex flex-col min-h-0">
         <h3 className="text-xs font-semibold text-muted-foreground p-3 pb-2 flex items-center gap-1">
           <MessageCircle className="h-3 w-3" />
           聊天对话
         </h3>
-        <ScrollArea className="flex-1">
+        <ScrollArea className="h-[200px]">
           <div className="p-2 pt-0 space-y-1">
             {filteredChats.length === 0 ? (
               <div className="text-center py-8">
