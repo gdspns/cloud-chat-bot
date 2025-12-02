@@ -25,7 +25,9 @@ const ADMIN_USERNAME = "admin";
 const ADMIN_PASSWORD = "qqai18301";
 
 export const Admin = () => {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(() => {
+    return localStorage.getItem('adminLoggedIn') === 'true';
+  });
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [activations, setActivations] = useState<BotActivation[]>([]);
@@ -67,6 +69,7 @@ export const Admin = () => {
   const handleLogin = () => {
     if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
       setIsLoggedIn(true);
+      localStorage.setItem('adminLoggedIn', 'true');
       toast({
         title: "登录成功",
         description: "欢迎访问管理后台",
@@ -78,6 +81,15 @@ export const Admin = () => {
         variant: "destructive",
       });
     }
+  };
+
+  const handleLogout = () => {
+    setIsLoggedIn(false);
+    localStorage.removeItem('adminLoggedIn');
+    toast({
+      title: "已退出",
+      description: "您已成功退出管理后台",
+    });
   };
 
   const handleAddActivation = async () => {
@@ -248,7 +260,7 @@ export const Admin = () => {
       <div className="container mx-auto max-w-6xl">
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-3xl font-bold">Telegram机器人授权管理</h1>
-          <Button variant="outline" onClick={() => setIsLoggedIn(false)}>
+          <Button variant="outline" onClick={handleLogout}>
             退出登录
           </Button>
         </div>

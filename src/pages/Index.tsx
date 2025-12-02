@@ -104,11 +104,20 @@ const Index = () => {
     }
   }, [enableSound, soundType]);
 
-  // 加载本地存储的机器人ID
+  // 加载本地存储的机器人ID和状态
   useEffect(() => {
     const storedBotIds = localStorage.getItem('myBotIds');
+    const storedSelectedBotId = localStorage.getItem('selectedBotId');
+    const storedSelectedChatId = localStorage.getItem('selectedChatId');
+    
     if (storedBotIds) {
       loadBots(JSON.parse(storedBotIds));
+    }
+    if (storedSelectedBotId) {
+      setSelectedBotId(storedSelectedBotId);
+    }
+    if (storedSelectedChatId) {
+      setSelectedChatId(Number(storedSelectedChatId));
     }
   }, []);
 
@@ -255,11 +264,18 @@ const Index = () => {
   // 选择聊天
   const handleSelectChat = (chatId: number) => {
     setSelectedChatId(chatId);
+    localStorage.setItem('selectedChatId', String(chatId));
     setUnreadChats(prev => {
       const updated = new Set(prev);
       updated.delete(chatId);
       return updated;
     });
+  };
+
+  // 选择机器人
+  const handleSelectBot = (botId: string) => {
+    setSelectedBotId(botId);
+    localStorage.setItem('selectedBotId', botId);
   };
 
   // 构建聊天列表
@@ -294,13 +310,13 @@ const Index = () => {
     <div className="min-h-screen bg-background flex flex-col">
       <Navbar />
       
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
         <ChatSidebar
           bots={bots}
           chats={chatItems}
           selectedBotId={selectedBotId}
           selectedChatId={selectedChatId}
-          onSelectBot={setSelectedBotId}
+          onSelectBot={handleSelectBot}
           onSelectChat={handleSelectChat}
           onAddBot={() => setShowAddBot(true)}
           unreadChats={unreadChats}
@@ -317,6 +333,32 @@ const Index = () => {
           onSoundTypeChange={setSoundType}
           onTestSound={playNotificationSound}
         />
+      </div>
+
+      {/* 网站介绍 */}
+      <div className="border-t bg-muted/30">
+        <div className="container mx-auto px-4 py-8">
+          <div className="grid md:grid-cols-2 gap-8">
+            <div>
+              <h2 className="text-2xl font-bold mb-4">关于机器人</h2>
+              <p className="text-muted-foreground leading-relaxed">
+                我们的Telegram机器人管理平台让您能够轻松管理与用户的对话。
+                支持自动问候、实时消息转发、多机器人同时管理等功能。
+                无论您是个人用户还是企业，都能找到适合您的解决方案。
+              </p>
+            </div>
+            <div>
+              <h2 className="text-2xl font-bold mb-4">功能特点</h2>
+              <ul className="space-y-2 text-muted-foreground">
+                <li>✓ 20条免费试用消息</li>
+                <li>✓ 实时消息通知提醒</li>
+                <li>✓ 多机器人统一管理</li>
+                <li>✓ 简洁易用的操作界面</li>
+                <li>✓ 支持自定义问候语</li>
+              </ul>
+            </div>
+          </div>
+        </div>
       </div>
 
       <AddBotDialog

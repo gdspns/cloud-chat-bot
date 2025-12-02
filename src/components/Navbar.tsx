@@ -1,9 +1,32 @@
-import { Link, useLocation } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Bot, Home, LogIn, UserPlus, Settings } from "lucide-react";
+import { Bot, Home, LogIn, UserPlus, LogOut, User } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 
 export const Navbar = () => {
   const location = useLocation();
+  const navigate = useNavigate();
+  const [user, setUser] = useState<any>(null);
+  
+  useEffect(() => {
+    // 获取当前用户
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+    });
+
+    // 监听认证状态变化
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    navigate('/');
+  };
   
   return (
     <nav className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
@@ -25,27 +48,46 @@ export const Navbar = () => {
             </Link>
           </Button>
           
-          <Button 
-            variant={location.pathname === "/auth" ? "default" : "ghost"} 
-            size="sm" 
-            asChild
-          >
-            <Link to="/auth?mode=register">
-              <UserPlus className="h-4 w-4 mr-1" />
-              注册
-            </Link>
-          </Button>
-          
-          <Button 
-            variant={location.pathname === "/auth" ? "default" : "ghost"} 
-            size="sm" 
-            asChild
-          >
-            <Link to="/auth?mode=login">
-              <LogIn className="h-4 w-4 mr-1" />
-              登录
-            </Link>
-          </Button>
+          {user ? (
+            <>
+              <div className="flex items-center gap-2 px-3 py-1 rounded-md bg-muted">
+                <User className="h-4 w-4" />
+                <span className="text-sm font-medium">{user.email}</span>
+              </div>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={handleLogout}
+              >
+                <LogOut className="h-4 w-4 mr-1" />
+                退出
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button 
+                variant={location.pathname === "/auth" ? "default" : "ghost"} 
+                size="sm" 
+                asChild
+              >
+                <Link to="/auth?mode=register">
+                  <UserPlus className="h-4 w-4 mr-1" />
+                  注册
+                </Link>
+              </Button>
+              
+              <Button 
+                variant={location.pathname === "/auth" ? "default" : "ghost"} 
+                size="sm" 
+                asChild
+              >
+                <Link to="/auth?mode=login">
+                  <LogIn className="h-4 w-4 mr-1" />
+                  登录
+                </Link>
+              </Button>
+            </>
+          )}
         </div>
       </div>
     </nav>
