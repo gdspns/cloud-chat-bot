@@ -310,7 +310,8 @@ const Index = () => {
     <div className="min-h-screen bg-background flex flex-col">
       <Navbar />
       
-      <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
+      {/* 手机端：垂直排列，电脑端：水平排列 */}
+      <div className="flex-1 flex flex-col md:flex-row overflow-auto p-4 gap-4">
         <ChatSidebar
           bots={bots}
           chats={chatItems}
