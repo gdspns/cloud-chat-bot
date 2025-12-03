@@ -3,8 +3,10 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { Trash2, Play, Pause, Calendar, Copy, CheckCircle, XCircle } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Trash2, Play, Pause, Calendar, Copy, CheckCircle, XCircle, Key, Globe, Smartphone } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 
 interface BotActivation {
@@ -19,6 +21,8 @@ interface BotActivation {
   trial_limit: number;
   expire_at: string | null;
   created_at: string;
+  web_enabled?: boolean;
+  app_enabled?: boolean;
 }
 
 const ADMIN_USERNAME = "admin";
@@ -36,6 +40,14 @@ export const Admin = () => {
   const [newGreetingMessage, setNewGreetingMessage] = useState("你好！👋 有什么可以帮助你的吗？");
   const [newExpiryDate, setNewExpiryDate] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  
+  // 激活码生成相关
+  const [showCodeGenerator, setShowCodeGenerator] = useState(false);
+  const [codeCount, setCodeCount] = useState("10");
+  const [codeExpiryDate, setCodeExpiryDate] = useState("");
+  const [generatedCodes, setGeneratedCodes] = useState<string[]>([]);
+  const [isGenerating, setIsGenerating] = useState(false);
+  
   const { toast } = useToast();
 
   useEffect(() => {
@@ -141,6 +153,64 @@ export const Admin = () => {
     }
   };
 
+  const handleGenerateCodes = async () => {
+    const count = parseInt(codeCount);
+    if (isNaN(count) || count < 1 || count > 100) {
+      toast({
+        title: "错误",
+        description: "请输入1-100之间的数量",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!codeExpiryDate) {
+      toast({
+        title: "错误",
+        description: "请选择有效期",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsGenerating(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('manage-bot', {
+        body: {
+          action: 'generate-codes',
+          count,
+          expireAt: new Date(codeExpiryDate).toISOString(),
+        }
+      });
+      
+      if (error) throw error;
+      if (!data.ok) throw new Error(data.error);
+      
+      setGeneratedCodes(data.codes || []);
+      toast({
+        title: "生成成功",
+        description: `已生成 ${count} 个激活码`,
+      });
+      loadActivations();
+    } catch (error: any) {
+      toast({
+        title: "生成失败",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleCopyAllCodes = () => {
+    navigator.clipboard.writeText(generatedCodes.join('\n'));
+    toast({
+      title: "复制成功",
+      description: "所有激活码已复制到剪贴板",
+    });
+  };
+
   const handleDeleteActivation = async (id: string) => {
     try {
       const { data, error } = await supabase.functions.invoke('manage-bot', {
@@ -190,6 +260,29 @@ export const Admin = () => {
     } catch (error: any) {
       toast({
         title: "操作失败",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleAuthorize = async (id: string) => {
+    try {
+      const { data, error } = await supabase.functions.invoke('manage-bot', {
+        body: { action: 'admin-authorize', id }
+      });
+      
+      if (error) throw error;
+      if (!data.ok) throw new Error(data.error);
+      
+      toast({
+        title: "激活成功",
+        description: "机器人已授权激活",
+      });
+      loadActivations();
+    } catch (error: any) {
+      toast({
+        title: "激活失败",
         description: error.message,
         variant: "destructive",
       });
@@ -260,9 +353,15 @@ export const Admin = () => {
       <div className="container mx-auto max-w-6xl">
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-3xl font-bold">Telegram机器人授权管理</h1>
-          <Button variant="outline" onClick={handleLogout}>
-            退出登录
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setShowCodeGenerator(true)}>
+              <Key className="h-4 w-4 mr-2" />
+              生成激活码
+            </Button>
+            <Button variant="outline" onClick={handleLogout}>
+              退出登录
+            </Button>
+          </div>
         </div>
 
         <Card className="p-6 mb-6">
@@ -318,18 +417,27 @@ export const Admin = () => {
             ) : (
               activations.map((activation) => {
                 const isExpired = activation.expire_at && new Date(activation.expire_at) < new Date();
+                const isPending = activation.bot_token === 'PENDING';
+                const trialExceeded = !activation.is_authorized && activation.trial_messages_used >= activation.trial_limit;
+                
                 return (
-                  <Card key={activation.id} className={`p-4 ${isExpired ? 'border-destructive' : ''}`}>
+                  <Card key={activation.id} className={`p-4 ${isExpired || trialExceeded ? 'border-destructive' : ''}`}>
                     <div className="flex justify-between items-start">
                       <div className="flex-1 space-y-2">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className={`px-2 py-1 rounded text-xs font-semibold ${
-                            activation.is_active && !isExpired 
-                              ? 'bg-green-500/20 text-green-700 dark:text-green-300' 
-                              : 'bg-gray-500/20 text-gray-700 dark:text-gray-300'
-                          }`}>
-                            {activation.is_active && !isExpired ? '运行中' : '已停止'}
-                          </span>
+                          {isPending ? (
+                            <span className="px-2 py-1 rounded text-xs font-semibold bg-gray-500/20 text-gray-700 dark:text-gray-300">
+                              待绑定
+                            </span>
+                          ) : (
+                            <span className={`px-2 py-1 rounded text-xs font-semibold ${
+                              activation.is_active && !isExpired 
+                                ? 'bg-green-500/20 text-green-700 dark:text-green-300' 
+                                : 'bg-gray-500/20 text-gray-700 dark:text-gray-300'
+                            }`}>
+                              {activation.is_active && !isExpired ? '运行中' : '已停止'}
+                            </span>
+                          )}
                           {activation.is_authorized ? (
                             <span className="px-2 py-1 rounded text-xs font-semibold bg-blue-500/20 text-blue-700 dark:text-blue-300 flex items-center gap-1">
                               <CheckCircle className="h-3 w-3" />
@@ -346,16 +454,23 @@ export const Admin = () => {
                               已过期
                             </span>
                           )}
-                          <span className="px-2 py-1 rounded text-xs font-semibold bg-purple-500/20 text-purple-700 dark:text-purple-300">
-                            试用: {activation.trial_messages_used}/{activation.trial_limit}
-                          </span>
+                          {trialExceeded && (
+                            <span className="px-2 py-1 rounded text-xs font-semibold bg-red-500/20 text-red-700 dark:text-red-300">
+                              试用已满
+                            </span>
+                          )}
+                          {!isPending && (
+                            <span className="px-2 py-1 rounded text-xs font-semibold bg-purple-500/20 text-purple-700 dark:text-purple-300">
+                              试用: {activation.trial_messages_used}/{activation.trial_limit}
+                            </span>
+                          )}
                         </div>
                         <div className="grid md:grid-cols-2 gap-2 text-sm">
                           <div>
-                            <span className="font-medium">机器人令牌:</span> {activation.bot_token.substring(0, 15)}...
+                            <span className="font-medium">机器人令牌:</span> {isPending ? '待绑定' : activation.bot_token.substring(0, 15) + '...'}
                           </div>
                           <div>
-                            <span className="font-medium">个人ID:</span> {activation.personal_user_id}
+                            <span className="font-medium">个人ID:</span> {isPending ? '待绑定' : activation.personal_user_id}
                           </div>
                           <div>
                             <span className="font-medium">激活码:</span> {activation.activation_code}
@@ -364,8 +479,44 @@ export const Admin = () => {
                             <span className="font-medium">过期日期:</span> {activation.expire_at ? new Date(activation.expire_at).toLocaleDateString('zh-CN') : '无'}
                           </div>
                         </div>
+                        
+                        {/* 端口控制开关 */}
+                        {!isPending && (
+                          <div className="flex items-center gap-6 pt-2 border-t mt-2">
+                            <div className="flex items-center gap-2">
+                              <Globe className="h-4 w-4 text-muted-foreground" />
+                              <Label htmlFor={`web-${activation.id}`} className="text-sm">Web端</Label>
+                              <Switch
+                                id={`web-${activation.id}`}
+                                checked={activation.web_enabled !== false}
+                                onCheckedChange={() => {}}
+                                className="data-[state=checked]:bg-green-500"
+                              />
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Smartphone className="h-4 w-4 text-muted-foreground" />
+                              <Label htmlFor={`app-${activation.id}`} className="text-sm">App端</Label>
+                              <Switch
+                                id={`app-${activation.id}`}
+                                checked={activation.app_enabled !== false}
+                                onCheckedChange={() => {}}
+                                className="data-[state=checked]:bg-green-500"
+                              />
+                            </div>
+                          </div>
+                        )}
                       </div>
                       <div className="flex gap-2 ml-4 flex-wrap">
+                        {!activation.is_authorized && !isPending && (
+                          <Button
+                            size="sm"
+                            variant="default"
+                            onClick={() => handleAuthorize(activation.id)}
+                            title="授权激活"
+                          >
+                            <CheckCircle className="h-4 w-4" />
+                          </Button>
+                        )}
                         <Button
                           size="sm"
                           variant="outline"
@@ -374,13 +525,15 @@ export const Admin = () => {
                         >
                           <Copy className="h-4 w-4" />
                         </Button>
-                        <Button
-                          size="sm"
-                          variant={activation.is_active ? "destructive" : "default"}
-                          onClick={() => handleToggleActive(activation.id, activation.is_active)}
-                        >
-                          {activation.is_active ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-                        </Button>
+                        {!isPending && (
+                          <Button
+                            size="sm"
+                            variant={activation.is_active ? "destructive" : "default"}
+                            onClick={() => handleToggleActive(activation.id, activation.is_active)}
+                          >
+                            {activation.is_active ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                          </Button>
+                        )}
                         <Dialog>
                           <DialogTrigger asChild>
                             <Button size="sm" variant="outline">
@@ -421,6 +574,67 @@ export const Admin = () => {
           </div>
         </Card>
       </div>
+
+      {/* 激活码生成对话框 */}
+      <Dialog open={showCodeGenerator} onOpenChange={setShowCodeGenerator}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>批量生成激活码</DialogTitle>
+            <DialogDescription>
+              生成的激活码可供用户绑定机器人使用
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>生成数量</Label>
+              <Input
+                type="number"
+                min="1"
+                max="100"
+                placeholder="输入数量 (1-100)"
+                value={codeCount}
+                onChange={(e) => setCodeCount(e.target.value)}
+                className="mt-2"
+              />
+            </div>
+            <div>
+              <Label>有效期至</Label>
+              <Input
+                type="date"
+                value={codeExpiryDate}
+                onChange={(e) => setCodeExpiryDate(e.target.value)}
+                className="mt-2"
+              />
+            </div>
+            <Button 
+              onClick={handleGenerateCodes} 
+              className="w-full"
+              disabled={isGenerating}
+            >
+              {isGenerating ? '生成中...' : '生成激活码'}
+            </Button>
+            
+            {generatedCodes.length > 0 && (
+              <div className="mt-4 p-4 bg-muted rounded-lg">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="font-medium">已生成的激活码:</span>
+                  <Button size="sm" variant="outline" onClick={handleCopyAllCodes}>
+                    <Copy className="h-4 w-4 mr-1" />
+                    复制全部
+                  </Button>
+                </div>
+                <div className="max-h-40 overflow-y-auto space-y-1">
+                  {generatedCodes.map((code, index) => (
+                    <div key={index} className="text-sm font-mono bg-background p-1 rounded">
+                      {code}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

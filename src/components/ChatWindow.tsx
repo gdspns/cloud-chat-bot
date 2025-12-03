@@ -207,8 +207,8 @@ export const ChatWindow = ({
         </div>
       </div>
 
-      {/* 消息列表 - 电脑端约8cm x 16cm (300px x 600px)，手机端自适应 */}
-      <ScrollArea className="flex-1 p-4 h-[200px] md:h-[300px] w-full md:max-w-[600px] mx-auto overflow-y-auto">
+      {/* 消息列表 - 电脑端300px x 400px，手机端自适应 */}
+      <ScrollArea className="flex-1 p-4 h-[250px] md:h-[300px] w-full md:max-w-[400px] mx-auto overflow-y-auto">
         {filteredMessages.map((message) => (
           <div
             key={message.id}

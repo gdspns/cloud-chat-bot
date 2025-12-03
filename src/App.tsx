@@ -8,6 +8,7 @@ import Admin from "./pages/Admin";
 import Auth from "./pages/Auth";
 import Activate from "./pages/Activate";
 import Console from "./pages/Console";
+import UserCenter from "./pages/UserCenter";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -22,6 +23,7 @@ const App = () => (
           <Route path="/" element={<Index />} />
           <Route path="/admin" element={<Admin />} />
           <Route path="/auth" element={<Auth />} />
+          <Route path="/user" element={<UserCenter />} />
           <Route path="/activate/:activationCode" element={<Activate />} />
           <Route path="/console/:activationId" element={<Console />} />
           <Route path="*" element={<NotFound />} />
