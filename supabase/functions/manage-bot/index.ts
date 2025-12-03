@@ -330,6 +330,135 @@ serve(async (req) => {
         });
       }
 
+      // 管理员直接授权激活
+      case 'admin-authorize': {
+        const { id } = params;
+        
+        const { data: activation, error: findError } = await supabase
+          .from('bot_activations')
+          .select('*')
+          .eq('id', id)
+          .single();
+
+        if (findError || !activation) {
+          return new Response(JSON.stringify({ ok: false, error: '机器人不存在' }), {
+            status: 404,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        if (activation.bot_token === 'PENDING') {
+          return new Response(JSON.stringify({ ok: false, error: '机器人令牌未绑定' }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // Set up webhook
+        const webhookUrl = `${supabaseUrl}/functions/v1/telegram-webhook/${activation.bot_token}`;
+        await fetch(`https://api.telegram.org/bot${activation.bot_token}/setWebhook`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: webhookUrl }),
+        });
+
+        // Update activation
+        const { data, error } = await supabase
+          .from('bot_activations')
+          .update({ is_active: true, is_authorized: true })
+          .eq('id', id)
+          .select()
+          .single();
+
+        if (error) {
+          return new Response(JSON.stringify({ ok: false, error: error.message }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        return new Response(JSON.stringify({ ok: true, data }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      // 用户绑定已存在机器人的激活码
+      case 'bind-existing': {
+        const { activationCode, botId } = params;
+        
+        // 查找目标机器人
+        const { data: bot, error: botError } = await supabase
+          .from('bot_activations')
+          .select('*')
+          .eq('id', botId)
+          .single();
+
+        if (botError || !bot) {
+          return new Response(JSON.stringify({ ok: false, error: '机器人不存在' }), {
+            status: 404,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // 查找激活码
+        const { data: codeRecord, error: codeError } = await supabase
+          .from('bot_activations')
+          .select('*')
+          .eq('activation_code', activationCode)
+          .eq('bot_token', 'PENDING')
+          .maybeSingle();
+
+        if (codeError || !codeRecord) {
+          return new Response(JSON.stringify({ ok: false, error: '激活码无效或已被使用' }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // 检查激活码过期
+        if (codeRecord.expire_at && new Date(codeRecord.expire_at) < new Date()) {
+          return new Response(JSON.stringify({ ok: false, error: '激活码已过期' }), {
+            status: 403,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // 更新机器人为已授权，并继承激活码的过期时间
+        const { data, error } = await supabase
+          .from('bot_activations')
+          .update({ 
+            is_authorized: true, 
+            is_active: true,
+            expire_at: codeRecord.expire_at,
+            trial_messages_used: 0 // 重置试用计数
+          })
+          .eq('id', botId)
+          .select()
+          .single();
+
+        if (error) {
+          return new Response(JSON.stringify({ ok: false, error: error.message }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // 删除已使用的激活码记录
+        await supabase.from('bot_activations').delete().eq('id', codeRecord.id);
+
+        // 设置webhook
+        const webhookUrl = `${supabaseUrl}/functions/v1/telegram-webhook/${bot.bot_token}`;
+        await fetch(`https://api.telegram.org/bot${bot.bot_token}/setWebhook`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: webhookUrl }),
+        });
+
+        return new Response(JSON.stringify({ ok: true, data }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
       case 'toggle': {
         const { id, isActive } = params;
         

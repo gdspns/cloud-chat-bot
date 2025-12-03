@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Bot, Home, LogIn, UserPlus, LogOut, User } from "lucide-react";
+import { Bot, Home, LogIn, UserPlus, LogOut, User, Settings } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
 export const Navbar = () => {
@@ -50,9 +50,19 @@ export const Navbar = () => {
           
           {user ? (
             <>
+              <Button 
+                variant={location.pathname === "/user" ? "default" : "ghost"} 
+                size="sm" 
+                asChild
+              >
+                <Link to="/user">
+                  <Settings className="h-4 w-4 mr-1" />
+                  用户中心
+                </Link>
+              </Button>
               <div className="flex items-center gap-2 px-3 py-1 rounded-md bg-muted">
                 <User className="h-4 w-4" />
-                <span className="text-sm font-medium">{user.email}</span>
+                <span className="text-sm font-medium max-w-[120px] truncate">{user.email}</span>
               </div>
               <Button 
                 variant="ghost" 
