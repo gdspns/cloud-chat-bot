@@ -157,7 +157,7 @@ export const ChatWindow = ({
   }
 
   return (
-    <div className="flex-1 flex flex-col">
+    <div className="flex-1 flex flex-col h-full md:h-auto overflow-hidden">
       {/* 头部 */}
       <div className="p-4 border-b flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -207,8 +207,8 @@ export const ChatWindow = ({
         </div>
       </div>
 
-      {/* 消息列表 - 固定尺寸 12cm x 20cm (约450px x 750px) */}
-      <ScrollArea className="p-4 h-[450px] w-full max-w-[750px] mx-auto overflow-y-auto">
+      {/* 消息列表 - 电脑端约8cm x 16cm (300px x 600px)，手机端自适应 */}
+      <ScrollArea className="flex-1 p-4 h-[200px] md:h-[300px] w-full md:max-w-[600px] mx-auto overflow-y-auto">
         {filteredMessages.map((message) => (
           <div
             key={message.id}
@@ -240,23 +240,23 @@ export const ChatWindow = ({
         </div>
       )}
 
-      {/* 发送消息 */}
-      <div className="p-4 border-t flex flex-col sm:flex-row gap-2">
+      {/* 发送消息 - 手机端底部固定，自适应宽度 */}
+      <div className="p-3 md:p-4 border-t flex gap-2 bg-background sticky bottom-0 left-0 right-0 w-full">
         <Input
           placeholder="输入回复消息..."
           value={replyText}
           onChange={(e) => setReplyText(e.target.value)}
           onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
           disabled={!canSend}
-          className="flex-1"
+          className="flex-1 min-w-0"
         />
         <Button 
           onClick={handleSend} 
           disabled={!canSend || isSending}
-          className="w-full sm:w-auto"
+          size="sm"
+          className="shrink-0"
         >
-          <Send className="h-4 w-4 mr-1" />
-          {isSending ? "..." : "发送"}
+          <Send className="h-4 w-4" />
         </Button>
       </div>
 
