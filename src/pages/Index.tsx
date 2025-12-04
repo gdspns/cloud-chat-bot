@@ -222,10 +222,58 @@ const Index = () => {
     }
   };
 
+  // 删除机器人
+  const handleDeleteBot = async (botId: string) => {
+    try {
+      const { data, error } = await supabase.functions.invoke('manage-bot', {
+        body: { action: 'delete', id: botId }
+      });
+      
+      if (error) throw error;
+      if (!data.ok) throw new Error(data.error);
+      
+      // 从本地存储移除
+      const storedBotIds = JSON.parse(localStorage.getItem('myBotIds') || '[]');
+      const newBotIds = storedBotIds.filter((id: string) => id !== botId);
+      localStorage.setItem('myBotIds', JSON.stringify(newBotIds));
+      
+      // 如果删除的是当前选中的机器人，清除选中状态
+      if (selectedBotId === botId) {
+        setSelectedBotId(newBotIds[0] || null);
+        setSelectedChatId(null);
+      }
+      
+      loadBots(newBotIds);
+      
+      toast({
+        title: "删除成功",
+        description: "机器人已从列表中移除",
+      });
+    } catch (error: any) {
+      toast({
+        title: "删除失败",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  };
+
+  // 刷新机器人列表
+  const handleBotUpdated = () => {
+    const storedBotIds = JSON.parse(localStorage.getItem('myBotIds') || '[]');
+    loadBots(storedBotIds);
+  };
+
   // 发送消息
   const handleSendMessage = async (message: string): Promise<{ trialExceeded?: boolean; error?: string }> => {
     if (!selectedBotId || !selectedChatId) {
       return { error: "请选择聊天对象" };
+    }
+
+    // 先检查本地状态
+    const currentBot = bots.find(b => b.id === selectedBotId);
+    if (currentBot && !currentBot.is_authorized && currentBot.trial_messages_used >= currentBot.trial_limit) {
+      return { trialExceeded: true };
     }
 
     try {
@@ -320,6 +368,8 @@ const Index = () => {
           onSelectBot={handleSelectBot}
           onSelectChat={handleSelectChat}
           onAddBot={() => setShowAddBot(true)}
+          onDeleteBot={handleDeleteBot}
+          onBotUpdated={handleBotUpdated}
           unreadChats={unreadChats}
         />
         

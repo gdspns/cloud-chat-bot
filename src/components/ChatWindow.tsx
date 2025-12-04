@@ -4,8 +4,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Send, AlertTriangle, Volume2, VolumeX, Bot } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Send, AlertTriangle, Volume2, VolumeX, Bot, ShoppingCart } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 
 interface Message {
   id: string;
@@ -53,17 +53,25 @@ export const ChatWindow = ({
   const [isSending, setIsSending] = useState(false);
   const [showTrialDialog, setShowTrialDialog] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
+  // 每当消息变化时自动滚动到底部
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
 
   const handleSend = async () => {
     if (!replyText.trim()) return;
+    
+    // 先检查试用限制
+    if (selectedBot && !selectedBot.is_authorized && selectedBot.trial_messages_used >= selectedBot.trial_limit) {
+      setShowTrialDialog(true);
+      return;
+    }
     
     setIsSending(true);
     const result = await onSendMessage(replyText);
@@ -78,7 +86,8 @@ export const ChatWindow = ({
 
   const filteredMessages = messages.filter(m => m.telegram_chat_id === selectedChatId);
   const isExpired = selectedBot?.expire_at && new Date(selectedBot.expire_at) < new Date();
-  const canSend = selectedBot?.is_active && !isExpired && selectedChatId;
+  const trialExceeded = selectedBot && !selectedBot.is_authorized && selectedBot.trial_messages_used >= selectedBot.trial_limit;
+  const canSend = selectedBot?.is_active && !isExpired && !trialExceeded && selectedChatId;
 
   // 无机器人状态
   if (!selectedBot) {
@@ -104,11 +113,11 @@ export const ChatWindow = ({
           <div className="flex items-center gap-2">
             <span className="font-medium">控制台</span>
             <span className={`px-2 py-0.5 rounded text-xs ${
-              selectedBot.is_active && !isExpired 
+              selectedBot.is_active && !isExpired && !trialExceeded
                 ? 'bg-green-500/20 text-green-700 dark:text-green-300' 
                 : 'bg-red-500/20 text-red-700 dark:text-red-300'
             }`}>
-              {selectedBot.is_active && !isExpired ? '在线' : '离线'}
+              {selectedBot.is_active && !isExpired && !trialExceeded ? '在线' : '离线'}
             </span>
             {!selectedBot.is_authorized && (
               <span className="px-2 py-0.5 rounded text-xs bg-yellow-500/20 text-yellow-700 dark:text-yellow-300">
@@ -165,11 +174,11 @@ export const ChatWindow = ({
             {filteredMessages[0]?.telegram_user_name || '聊天'}
           </span>
           <span className={`px-2 py-0.5 rounded text-xs ${
-            selectedBot.is_active && !isExpired 
+            selectedBot.is_active && !isExpired && !trialExceeded
               ? 'bg-green-500/20 text-green-700 dark:text-green-300' 
               : 'bg-red-500/20 text-red-700 dark:text-red-300'
           }`}>
-            {selectedBot.is_active && !isExpired ? '在线' : '离线'}
+            {selectedBot.is_active && !isExpired && !trialExceeded ? '在线' : '离线'}
           </span>
           {!selectedBot.is_authorized && (
             <span className="px-2 py-0.5 rounded text-xs bg-yellow-500/20 text-yellow-700 dark:text-yellow-300">
@@ -207,35 +216,44 @@ export const ChatWindow = ({
         </div>
       </div>
 
-      {/* 消息列表 - 电脑端300px x 400px，手机端自适应 */}
-      <ScrollArea className="flex-1 p-4 h-[250px] md:h-[300px] w-full md:max-w-[400px] mx-auto overflow-y-auto">
-        {filteredMessages.map((message) => (
-          <div
-            key={message.id}
-            className={`mb-3 p-3 rounded-lg max-w-[80%] md:max-w-[70%] ${
-              message.direction === 'outgoing'
-                ? 'ml-auto bg-primary text-primary-foreground'
-                : 'bg-muted'
-            }`}
-          >
-            <div className="flex justify-between items-start mb-1">
-              <span className="font-medium text-sm">{message.telegram_user_name}</span>
-              <span className="text-xs opacity-70 ml-2">
-                {new Date(message.created_at).toLocaleTimeString('zh-CN')}
-              </span>
+      {/* 消息列表 - 电脑端300px x 400px */}
+      <div className="flex-1 flex justify-center">
+        <ScrollArea 
+          ref={scrollAreaRef}
+          className="p-4 h-[300px] w-full max-w-[400px] overflow-y-auto"
+        >
+          {filteredMessages.map((message) => (
+            <div
+              key={message.id}
+              className={`mb-3 p-3 rounded-lg max-w-[80%] md:max-w-[70%] ${
+                message.direction === 'outgoing'
+                  ? 'ml-auto bg-primary text-primary-foreground'
+                  : 'bg-muted'
+              }`}
+            >
+              <div className="flex justify-between items-start mb-1">
+                <span className="font-medium text-sm">{message.telegram_user_name}</span>
+                <span className="text-xs opacity-70 ml-2">
+                  {new Date(message.created_at).toLocaleTimeString('zh-CN')}
+                </span>
+              </div>
+              <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
             </div>
-            <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
-          </div>
-        ))}
-        <div ref={messagesEndRef} />
-      </ScrollArea>
+          ))}
+          <div ref={messagesEndRef} />
+        </ScrollArea>
+      </div>
 
       {/* 状态提示 */}
-      {(!selectedBot.is_active || isExpired) && (
+      {(trialExceeded || !selectedBot.is_active || isExpired) && (
         <div className="mx-4 mb-2 p-3 bg-destructive/10 border border-destructive/20 rounded-lg flex items-center gap-2">
           <AlertTriangle className="h-4 w-4 text-destructive shrink-0" />
           <p className="text-sm text-destructive">
-            {isExpired ? "服务已过期，请联系管理员续期" : "服务已停止，无法发送消息"}
+            {trialExceeded 
+              ? "试用次数已用完，请绑定激活码继续使用" 
+              : isExpired 
+                ? "服务已过期，请联系管理员续期" 
+                : "服务已停止，无法发送消息"}
           </p>
         </div>
       )}
@@ -260,19 +278,31 @@ export const ChatWindow = ({
         </Button>
       </div>
 
-      {/* 试用限制对话框 */}
+      {/* 试用限制购买授权对话框 */}
       <Dialog open={showTrialDialog} onOpenChange={setShowTrialDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>试用次数已用完</DialogTitle>
-            <DialogDescription>
-              您已使用完 {selectedBot.trial_limit} 条免费试用消息。
-              如需继续使用，请联系管理员获取激活码授权。
+            <DialogTitle className="flex items-center gap-2">
+              <ShoppingCart className="h-5 w-5" />
+              需要购买授权
+            </DialogTitle>
+            <DialogDescription className="space-y-2 pt-2">
+              <p>您已使用完 {selectedBot.trial_limit} 条免费试用消息。</p>
+              <p>如需继续使用，请联系管理员获取激活码授权。</p>
+              <p className="text-primary font-medium">绑定激活码后即可继续使用机器人服务。</p>
             </DialogDescription>
           </DialogHeader>
-          <Button onClick={() => setShowTrialDialog(false)}>
-            我知道了
-          </Button>
+          <DialogFooter className="flex gap-2">
+            <Button variant="outline" onClick={() => setShowTrialDialog(false)}>
+              稍后再说
+            </Button>
+            <Button onClick={() => {
+              setShowTrialDialog(false);
+              // 可以跳转到用户中心
+            }}>
+              去绑定激活码
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
