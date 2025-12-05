@@ -17,6 +17,7 @@ export type Database = {
       bot_activations: {
         Row: {
           activation_code: string
+          app_enabled: boolean | null
           bot_token: string
           created_at: string
           expire_at: string | null
@@ -28,9 +29,11 @@ export type Database = {
           trial_limit: number | null
           trial_messages_used: number | null
           updated_at: string
+          web_enabled: boolean | null
         }
         Insert: {
           activation_code: string
+          app_enabled?: boolean | null
           bot_token: string
           created_at?: string
           expire_at?: string | null
@@ -42,9 +45,11 @@ export type Database = {
           trial_limit?: number | null
           trial_messages_used?: number | null
           updated_at?: string
+          web_enabled?: boolean | null
         }
         Update: {
           activation_code?: string
+          app_enabled?: boolean | null
           bot_token?: string
           created_at?: string
           expire_at?: string | null
@@ -56,6 +61,7 @@ export type Database = {
           trial_limit?: number | null
           trial_messages_used?: number | null
           updated_at?: string
+          web_enabled?: boolean | null
         }
         Relationships: []
       }

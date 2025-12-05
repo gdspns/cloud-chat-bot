@@ -135,6 +135,14 @@ export const UserCenter = () => {
     return { text: '试用中', color: 'bg-blue-500/20 text-blue-700 dark:text-blue-300' };
   };
 
+  const formatExpireDate = (expireAt: string | null) => {
+    if (!expireAt) return '永久';
+    const date = new Date(expireAt);
+    const now = new Date();
+    if (date < now) return '已过期';
+    return date.toLocaleDateString('zh-CN');
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
@@ -200,6 +208,14 @@ export const UserCenter = () => {
                       <div className="text-sm">
                         <span className="font-medium">令牌:</span>{' '}
                         <span className="text-muted-foreground">{bot.bot_token.substring(0, 20)}...</span>
+                      </div>
+                      
+                      {/* 有效期信息 */}
+                      <div className="text-sm">
+                        <span className="font-medium">有效期:</span>{' '}
+                        <span className={`${isExpired ? 'text-destructive' : 'text-muted-foreground'}`}>
+                          {bot.is_authorized ? formatExpireDate(bot.expire_at) : `试用: ${bot.trial_messages_used}/${bot.trial_limit}`}
+                        </span>
                       </div>
                       
                       {/* 过期提示 */}
