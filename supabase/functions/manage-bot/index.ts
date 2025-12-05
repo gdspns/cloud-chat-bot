@@ -597,6 +597,72 @@ serve(async (req) => {
         });
       }
 
+      // 端口控制
+      case 'toggle-port': {
+        const { id, portType, enabled } = params;
+        
+        const updateData: Record<string, boolean> = {};
+        if (portType === 'web') {
+          updateData.web_enabled = enabled;
+        } else if (portType === 'app') {
+          updateData.app_enabled = enabled;
+        } else {
+          return new Response(JSON.stringify({ ok: false, error: '无效的端口类型' }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        const { data, error } = await supabase
+          .from('bot_activations')
+          .update(updateData)
+          .eq('id', id)
+          .select()
+          .single();
+
+        if (error) {
+          return new Response(JSON.stringify({ ok: false, error: error.message }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        return new Response(JSON.stringify({ ok: true, data }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      // 清理72小时未激活的试用机器人
+      case 'cleanup-expired-trials': {
+        const cutoffTime = new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
+        
+        const { data: expiredBots, error: fetchError } = await supabase
+          .from('bot_activations')
+          .select('*')
+          .eq('is_authorized', false)
+          .lt('created_at', cutoffTime);
+
+        if (fetchError) {
+          return new Response(JSON.stringify({ ok: false, error: fetchError.message }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // 删除过期的试用机器人及其消息
+        for (const bot of expiredBots || []) {
+          if (bot.bot_token !== 'PENDING') {
+            await fetch(`https://api.telegram.org/bot${bot.bot_token}/deleteWebhook`);
+          }
+          await supabase.from('messages').delete().eq('bot_activation_id', bot.id);
+          await supabase.from('bot_activations').delete().eq('id', bot.id);
+        }
+
+        return new Response(JSON.stringify({ ok: true, deleted: expiredBots?.length || 0 }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
       default:
         return new Response(JSON.stringify({ ok: false, error: 'Unknown action' }), {
           status: 400,
