@@ -43,6 +43,14 @@ serve(async (req) => {
       });
     }
 
+    // 检查Web端口是否启用（网页发送消息）
+    if (activation.web_enabled === false) {
+      return new Response(JSON.stringify({ error: 'Web端口已禁用，无法发送消息' }), {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     // Check expiry
     if (activation.expire_at && new Date(activation.expire_at) < new Date()) {
       return new Response(JSON.stringify({ error: 'Bot expired' }), {
@@ -97,6 +105,15 @@ serve(async (req) => {
         .from('bot_activations')
         .update({ trial_messages_used: activation.trial_messages_used + 1 })
         .eq('id', activation.id);
+        
+      // 同步更新试用记录表
+      await supabase
+        .from('bot_trial_records')
+        .upsert({
+          bot_token: activation.bot_token,
+          messages_used: activation.trial_messages_used + 1,
+          is_blocked: activation.trial_messages_used + 1 >= activation.trial_limit,
+        }, { onConflict: 'bot_token' });
     }
 
     return new Response(JSON.stringify({ ok: true, result: sendResult.result }), {
