@@ -14,6 +14,41 @@ export type Database = {
   }
   public: {
     Tables: {
+      activation_codes: {
+        Row: {
+          code: string
+          created_at: string
+          expire_at: string | null
+          id: string
+          is_used: boolean | null
+          used_by_bot_id: string | null
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          expire_at?: string | null
+          id?: string
+          is_used?: boolean | null
+          used_by_bot_id?: string | null
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          expire_at?: string | null
+          id?: string
+          is_used?: boolean | null
+          used_by_bot_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "activation_codes_used_by_bot_id_fkey"
+            columns: ["used_by_bot_id"]
+            isOneToOne: false
+            referencedRelation: "bot_activations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       bot_activations: {
         Row: {
           activation_code: string
@@ -62,6 +97,39 @@ export type Database = {
           trial_messages_used?: number | null
           updated_at?: string
           web_enabled?: boolean | null
+        }
+        Relationships: []
+      }
+      bot_trial_records: {
+        Row: {
+          bot_token: string
+          created_at: string
+          id: string
+          is_blocked: boolean | null
+          last_authorized_expire_at: string | null
+          messages_used: number | null
+          updated_at: string
+          was_authorized: boolean | null
+        }
+        Insert: {
+          bot_token: string
+          created_at?: string
+          id?: string
+          is_blocked?: boolean | null
+          last_authorized_expire_at?: string | null
+          messages_used?: number | null
+          updated_at?: string
+          was_authorized?: boolean | null
+        }
+        Update: {
+          bot_token?: string
+          created_at?: string
+          id?: string
+          is_blocked?: boolean | null
+          last_authorized_expire_at?: string | null
+          messages_used?: number | null
+          updated_at?: string
+          was_authorized?: boolean | null
         }
         Relationships: []
       }

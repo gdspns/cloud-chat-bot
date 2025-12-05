@@ -62,6 +62,15 @@ serve(async (req) => {
       });
     }
 
+    // 检查App端口是否启用（接收消息来自Telegram App）
+    if (activation.app_enabled === false) {
+      console.log('App port disabled for this bot');
+      return new Response(JSON.stringify({ error: 'App port disabled' }), {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     // Check trial limit if not authorized
     if (!activation.is_authorized && activation.trial_messages_used >= activation.trial_limit) {
       console.log('Trial limit reached');
@@ -169,6 +178,15 @@ serve(async (req) => {
         .from('bot_activations')
         .update({ trial_messages_used: activation.trial_messages_used + 1 })
         .eq('id', activation.id);
+        
+      // 同步更新试用记录表
+      await supabase
+        .from('bot_trial_records')
+        .upsert({
+          bot_token: botToken,
+          messages_used: activation.trial_messages_used + 1,
+          is_blocked: activation.trial_messages_used + 1 >= activation.trial_limit,
+        }, { onConflict: 'bot_token' });
     }
 
     // Forward message to personal user
