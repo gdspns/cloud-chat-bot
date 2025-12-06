@@ -41,19 +41,12 @@ export const AddBotDialog = ({ open, onOpenChange, onBotAdded }: AddBotDialogPro
         .maybeSingle();
 
       if (existing) {
-        // 如果已存在且未授权且试用已满，拒绝
-        if (!existing.is_authorized && existing.trial_messages_used >= existing.trial_limit) {
-          toast({
-            title: "无法添加",
-            description: "此机器人令牌已用完试用额度，需要授权激活才能继续使用",
-            variant: "destructive",
-          });
-          return;
-        }
-        
+        // 已存在，直接添加到本地列表（不阻止添加，让用户可以看到试用状态）
         toast({
           title: "已存在",
-          description: "此机器人令牌已添加到系统中",
+          description: existing.is_authorized 
+            ? "此机器人令牌已添加到系统中" 
+            : `此机器人试用: ${existing.trial_messages_used}/${existing.trial_limit}`,
         });
         onBotAdded();
         onOpenChange(false);

@@ -27,6 +27,8 @@ interface BotActivation {
   trial_messages_used: number;
   trial_limit: number;
   expire_at: string | null;
+  web_enabled?: boolean;
+  app_enabled?: boolean;
 }
 
 interface ChatItem {

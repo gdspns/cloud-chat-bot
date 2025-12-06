@@ -33,17 +33,16 @@ serve(async (req) => {
       });
     }
 
-    // Find the bot activation by token
+    // Find the bot activation by token (不再检查is_active，让端口控制决定)
     const { data: activation, error: activationError } = await supabase
       .from('bot_activations')
       .select('*')
       .eq('bot_token', botToken)
-      .eq('is_active', true)
       .maybeSingle();
 
     if (activationError || !activation) {
-      console.log('Bot not found or inactive:', activationError);
-      return new Response(JSON.stringify({ error: 'Bot not found or inactive' }), {
+      console.log('Bot not found:', activationError);
+      return new Response(JSON.stringify({ error: 'Bot not found' }), {
         status: 404,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -62,20 +61,20 @@ serve(async (req) => {
       });
     }
 
-    // 检查App端口是否启用（接收消息来自Telegram App）
-    if (activation.app_enabled === false) {
-      console.log('App port disabled for this bot');
-      return new Response(JSON.stringify({ error: 'App port disabled' }), {
+    // Check trial limit if not authorized - 试用满20条后不能收发消息
+    if (!activation.is_authorized && activation.trial_messages_used >= activation.trial_limit) {
+      console.log('Trial limit reached - blocked');
+      return new Response(JSON.stringify({ error: 'Trial limit reached' }), {
         status: 403,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    // Check trial limit if not authorized
-    if (!activation.is_authorized && activation.trial_messages_used >= activation.trial_limit) {
-      console.log('Trial limit reached');
-      return new Response(JSON.stringify({ error: 'Trial limit reached' }), {
-        status: 403,
+    // 【关键修复】检查App端口是否启用 - App端口控制Telegram App的消息接收
+    // 即使is_active为true，如果app_enabled为false，也不接收来自Telegram的消息
+    if (activation.app_enabled === false) {
+      console.log('App port disabled - message blocked');
+      return new Response(JSON.stringify({ ok: true, blocked: 'app_port_disabled' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }

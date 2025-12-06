@@ -84,6 +84,11 @@ export const Admin = () => {
   const [isSending, setIsSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
+  // 激活码绑定相关
+  const [bindingBotId, setBindingBotId] = useState<string | null>(null);
+  const [activationCode, setActivationCode] = useState("");
+  const [isBinding, setIsBinding] = useState(false);
+  
   const { toast } = useToast();
 
   useEffect(() => {
@@ -394,6 +399,17 @@ export const Admin = () => {
   };
 
   const handleTogglePort = async (id: string, portType: 'web' | 'app', currentValue: boolean) => {
+    // 立即更新本地状态以实现即时响应
+    setActivations(prev => prev.map(a => {
+      if (a.id === id) {
+        return {
+          ...a,
+          [portType === 'web' ? 'web_enabled' : 'app_enabled']: !currentValue
+        };
+      }
+      return a;
+    }));
+
     try {
       const { data, error } = await supabase.functions.invoke('manage-bot', {
         body: { 
@@ -411,13 +427,65 @@ export const Admin = () => {
         title: "端口状态已更新",
         description: `${portType === 'web' ? 'Web' : 'App'}端口已${!currentValue ? '启用' : '禁用'}`,
       });
-      loadActivations();
     } catch (error: any) {
+      // 恢复原状态
+      setActivations(prev => prev.map(a => {
+        if (a.id === id) {
+          return {
+            ...a,
+            [portType === 'web' ? 'web_enabled' : 'app_enabled']: currentValue
+          };
+        }
+        return a;
+      }));
       toast({
         title: "操作失败",
         description: error.message,
         variant: "destructive",
       });
+    }
+  };
+
+  // 管理员绑定激活码
+  const handleBindCode = async (botId: string) => {
+    if (!activationCode.trim()) {
+      toast({
+        title: "错误",
+        description: "请输入激活码",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsBinding(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('manage-bot', {
+        body: { 
+          action: 'bind-existing',
+          activationCode: activationCode.trim(),
+          botId: botId
+        }
+      });
+      
+      if (error) throw error;
+      if (!data.ok) throw new Error(data.error);
+      
+      toast({
+        title: "绑定成功",
+        description: "激活码已成功绑定，机器人已激活",
+      });
+      setActivationCode("");
+      setBindingBotId(null);
+      loadActivations();
+      loadAllCodes();
+    } catch (error: any) {
+      toast({
+        title: "绑定失败",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsBinding(false);
     }
   };
 
@@ -677,6 +745,49 @@ export const Admin = () => {
                               {boundCode && (
                                 <div className="text-sm text-muted-foreground">
                                   <span className="font-medium">绑定激活码:</span> {boundCode.code}
+                                </div>
+                              )}
+                              
+                              {/* 过期或未授权机器人的激活码绑定 */}
+                              {(isExpired || !activation.is_authorized) && (
+                                <div className="pt-2 border-t mt-2">
+                                  {bindingBotId === activation.id ? (
+                                    <div className="flex gap-2">
+                                      <Input
+                                        placeholder="输入激活码..."
+                                        value={activationCode}
+                                        onChange={(e) => setActivationCode(e.target.value)}
+                                        className="flex-1"
+                                      />
+                                      <Button 
+                                        size="sm" 
+                                        onClick={() => handleBindCode(activation.id)}
+                                        disabled={isBinding}
+                                      >
+                                        {isBinding ? '绑定中...' : '绑定'}
+                                      </Button>
+                                      <Button 
+                                        size="sm" 
+                                        variant="outline"
+                                        onClick={() => {
+                                          setBindingBotId(null);
+                                          setActivationCode("");
+                                        }}
+                                      >
+                                        取消
+                                      </Button>
+                                    </div>
+                                  ) : (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => setBindingBotId(activation.id)}
+                                      className="w-full"
+                                    >
+                                      <Key className="h-4 w-4 mr-2" />
+                                      {isExpired ? '续期激活' : '绑定激活码'}
+                                    </Button>
+                                  )}
                                 </div>
                               )}
                               

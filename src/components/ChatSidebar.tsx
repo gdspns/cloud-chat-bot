@@ -17,6 +17,8 @@ interface BotActivation {
   trial_messages_used: number;
   trial_limit: number;
   expire_at: string | null;
+  web_enabled?: boolean;
+  app_enabled?: boolean;
 }
 
 interface ChatItem {
@@ -152,6 +154,8 @@ export const ChatSidebar = ({
                 );
                 const isExpired = bot.expire_at && new Date(bot.expire_at) < new Date();
                 const trialExceeded = !bot.is_authorized && bot.trial_messages_used >= bot.trial_limit;
+                // 需要绑定激活码的情况：未授权 或 已过期
+                const needsActivation = !bot.is_authorized || isExpired;
                 
                 return (
                   <div key={bot.id} className="space-y-1">
@@ -174,6 +178,11 @@ export const ChatSidebar = ({
                             试用
                           </Badge>
                         )}
+                        {isExpired && (
+                          <Badge variant="destructive" className="ml-1 text-[8px] px-1 py-0">
+                            过期
+                          </Badge>
+                        )}
                         {bot.is_active && !isExpired && !trialExceeded && (
                           <span className="w-1.5 h-1.5 bg-green-500 rounded-full ml-1 shrink-0" />
                         )}
@@ -191,13 +200,15 @@ export const ChatSidebar = ({
                     {/* 状态信息 */}
                     <div className="text-[10px] text-muted-foreground px-2 flex items-center gap-2">
                       <Calendar className="h-3 w-3" />
-                      <span className={isExpired ? 'text-destructive' : ''}>
-                        {bot.is_authorized ? `有效期: ${formatExpireDate(bot.expire_at)}` : `试用: ${bot.trial_messages_used}/${bot.trial_limit}`}
+                      <span className={isExpired ? 'text-destructive' : trialExceeded ? 'text-yellow-600' : ''}>
+                        {bot.is_authorized 
+                          ? `有效期: ${formatExpireDate(bot.expire_at)}` 
+                          : `试用: ${bot.trial_messages_used}/${bot.trial_limit}`}
                       </span>
                     </div>
                     
-                    {/* 绑定激活码 - 未授权的机器人显示 */}
-                    {!bot.is_authorized && (
+                    {/* 绑定激活码 - 未授权或已过期的机器人显示 */}
+                    {needsActivation && (
                       <div className="px-1">
                         {bindingBotId === bot.id ? (
                           <div className="flex gap-1">
@@ -235,7 +246,7 @@ export const ChatSidebar = ({
                             onClick={() => setBindingBotId(bot.id)}
                           >
                             <Key className="h-3 w-3 mr-1" />
-                            绑定激活码
+                            {isExpired ? '续期激活' : '绑定激活码'}
                           </Button>
                         )}
                       </div>

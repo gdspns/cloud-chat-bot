@@ -28,25 +28,16 @@ serve(async (req) => {
       });
     }
 
-    // Get bot activation
+    // Get bot activation (不再检查is_active，让端口控制决定)
     const { data: activation, error: activationError } = await supabase
       .from('bot_activations')
       .select('*')
       .eq('id', activationId)
-      .eq('is_active', true)
       .maybeSingle();
 
     if (activationError || !activation) {
-      return new Response(JSON.stringify({ error: 'Bot not found or inactive' }), {
+      return new Response(JSON.stringify({ error: 'Bot not found' }), {
         status: 404,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    // 检查Web端口是否启用（网页发送消息）
-    if (activation.web_enabled === false) {
-      return new Response(JSON.stringify({ error: 'Web端口已禁用，无法发送消息' }), {
-        status: 403,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
@@ -59,9 +50,17 @@ serve(async (req) => {
       });
     }
 
-    // Check trial limit
+    // Check trial limit - 试用满20条后不能发送消息
     if (!activation.is_authorized && activation.trial_messages_used >= activation.trial_limit) {
       return new Response(JSON.stringify({ error: 'Trial limit reached', trialExceeded: true }), {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // 【关键修复】检查Web端口是否启用 - Web端口控制网页端的消息发送
+    if (activation.web_enabled === false) {
+      return new Response(JSON.stringify({ error: 'Web端口已禁用，无法发送消息', webDisabled: true }), {
         status: 403,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });

@@ -228,8 +228,8 @@ export const UserCenter = () => {
                         </div>
                       )}
                       
-                      {/* 绑定激活码 */}
-                      {!bot.is_authorized && (
+                      {/* 绑定激活码 - 未授权或已过期的机器人都可以绑定 */}
+                      {(!bot.is_authorized || isExpired) && (
                         <div className="pt-2 border-t">
                           {bindingBotId === bot.id ? (
                             <div className="flex gap-2">
@@ -265,7 +265,7 @@ export const UserCenter = () => {
                               className="w-full"
                             >
                               <Key className="h-4 w-4 mr-2" />
-                              绑定激活码
+                              {isExpired ? '续期激活' : '绑定激活码'}
                             </Button>
                           )}
                         </div>
