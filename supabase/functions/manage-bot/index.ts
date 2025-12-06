@@ -59,23 +59,12 @@ serve(async (req) => {
       case 'create-trial': {
         const { botToken, personalUserId, greetingMessage } = params;
         
-        // 检查试用记录 - 该令牌是否已经被封禁
+        // 检查试用记录 - 该令牌的历史使用情况
         const { data: trialRecord } = await supabase
           .from('bot_trial_records')
           .select('*')
           .eq('bot_token', botToken)
           .maybeSingle();
-
-        // 如果有试用记录且被封禁（未授权过），拒绝
-        if (trialRecord && trialRecord.is_blocked && !trialRecord.was_authorized) {
-          return new Response(JSON.stringify({ 
-            ok: false, 
-            error: '此机器人令牌已用完试用额度，需要授权激活' 
-          }), {
-            status: 400,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          });
-        }
 
         // 检查是否已存在于bot_activations
         const { data: existing } = await supabase
@@ -85,24 +74,13 @@ serve(async (req) => {
           .maybeSingle();
 
         if (existing) {
-          // 如果存在且未授权且试用已满，拒绝
-          if (!existing.is_authorized && existing.trial_messages_used >= existing.trial_limit) {
-            return new Response(JSON.stringify({ 
-              ok: false, 
-              error: '此机器人令牌已用完试用额度，需要授权激活' 
-            }), {
-              status: 400,
-              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            });
-          }
-          
           // 已存在则返回现有数据
           return new Response(JSON.stringify({ ok: true, data: existing, existed: true }), {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           });
         }
         
-        // 如果之前有试用记录（已授权过的机器人被删除重新添加），恢复授权状态
+        // 如果之前有试用记录且已授权过的机器人被删除重新添加，恢复授权状态
         if (trialRecord && trialRecord.was_authorized) {
           const activationCode = 'restored-' + crypto.randomUUID().substring(0, 8);
           
@@ -146,10 +124,11 @@ serve(async (req) => {
         // 生成激活码（试用模式）
         const activationCode = 'trial-' + crypto.randomUUID().substring(0, 8);
         
-        // 从试用记录恢复消息数（如果有）
+        // 从试用记录恢复消息数（如果有）- 即使被封禁也允许添加，但显示累计使用量
         const messagesUsed = trialRecord?.messages_used || 0;
+        const isBlocked = messagesUsed >= 20;
         
-        // 创建新的试用机器人
+        // 创建新的试用机器人 - 即使已满20条也允许添加，只是不能收发消息
         const { data, error } = await supabase
           .from('bot_activations')
           .insert({
@@ -157,10 +136,10 @@ serve(async (req) => {
             personal_user_id: personalUserId,
             greeting_message: greetingMessage || '你好！👋 有什么可以帮助你的吗？',
             activation_code: activationCode,
-            is_active: true,
+            is_active: !isBlocked, // 如果被封禁则不激活
             is_authorized: false,
             trial_limit: 20,
-            trial_messages_used: messagesUsed,
+            trial_messages_used: messagesUsed, // 恢复累计使用量
           })
           .select()
           .single();
@@ -179,10 +158,10 @@ serve(async (req) => {
           .upsert({
             bot_token: botToken,
             messages_used: messagesUsed,
-            is_blocked: messagesUsed >= 20,
+            is_blocked: isBlocked,
           }, { onConflict: 'bot_token' });
 
-        // 设置Webhook
+        // 设置Webhook（即使被封禁也设置，以便解封后可用）
         const webhookUrl = `${supabaseUrl}/functions/v1/telegram-webhook/${botToken}`;
         const webhookResponse = await fetch(
           `https://api.telegram.org/bot${botToken}/setWebhook`,
@@ -207,7 +186,7 @@ serve(async (req) => {
           });
         }
 
-        return new Response(JSON.stringify({ ok: true, data }), {
+        return new Response(JSON.stringify({ ok: true, data, trialBlocked: isBlocked }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
