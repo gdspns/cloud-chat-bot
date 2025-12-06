@@ -33,7 +33,7 @@ serve(async (req) => {
       });
     }
 
-    // Find the bot activation by token (不再检查is_active，让端口控制决定)
+    // Find the bot activation by token
     const { data: activation, error: activationError } = await supabase
       .from('bot_activations')
       .select('*')
@@ -70,15 +70,6 @@ serve(async (req) => {
       });
     }
 
-    // 【关键修复】检查App端口是否启用 - App端口控制Telegram App的消息接收
-    // 即使is_active为true，如果app_enabled为false，也不接收来自Telegram的消息
-    if (activation.app_enabled === false) {
-      console.log('App port disabled - message blocked');
-      return new Response(JSON.stringify({ ok: true, blocked: 'app_port_disabled' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
     const message = body.message;
     if (!message) {
       return new Response(JSON.stringify({ ok: true }), {
@@ -94,6 +85,14 @@ serve(async (req) => {
 
     // Check if this is a reply from personal user to forward
     if (chatId === personalUserId && message.reply_to_message) {
+      // 【App端口控制】检查App端口 - 控制Telegram App中用户的回复能力
+      if (activation.app_enabled === false) {
+        console.log('App port disabled - reply blocked');
+        return new Response(JSON.stringify({ ok: true, blocked: 'app_port_disabled' }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
       // Extract target chat ID from the original forwarded message
       // Format: [CHATID:xxx:MSGID:xxx]
       const replyText = message.reply_to_message.text || '';
@@ -147,21 +146,11 @@ serve(async (req) => {
       });
     }
 
-    // Handle /start command - send greeting
-    if (text === '/start' && activation.greeting_message) {
-      await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chat_id: chatId,
-          text: activation.greeting_message,
-        }),
-      });
-    }
-
-    // Store incoming message
+    // 【关键逻辑】无论端口开关状态，都先记录消息到数据库
+    // 同时记录消息接收时的端口状态，用于前端过滤显示
     const userName = fromUser.first_name + (fromUser.last_name ? ' ' + fromUser.last_name : '');
     
+    // 管理员监控始终可以看到所有消息，这里直接存储
     await supabase.from('messages').insert({
       bot_activation_id: activation.id,
       telegram_chat_id: chatId,
@@ -169,6 +158,8 @@ serve(async (req) => {
       telegram_message_id: messageId,
       content: text,
       direction: 'incoming',
+      // 如果web端口关闭，标记为未读false，前端会过滤掉
+      is_read: activation.web_enabled === false ? null : false,
     });
 
     // Update trial messages count if not authorized
@@ -188,17 +179,34 @@ serve(async (req) => {
         }, { onConflict: 'bot_token' });
     }
 
-    // Forward message to personal user
-    const forwardText = `📨 新消息\n来自: ${userName}\n[CHATID:${chatId}:MSGID:${messageId}]\n\n${text}`;
-    
-    await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: personalUserId,
-        text: forwardText,
-      }),
-    });
+    // 【App端口控制】只有App端口开启时才转发到个人用户的Telegram
+    if (activation.app_enabled !== false) {
+      // Handle /start command - send greeting
+      if (text === '/start' && activation.greeting_message) {
+        await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: chatId,
+            text: activation.greeting_message,
+          }),
+        });
+      }
+
+      // Forward message to personal user
+      const forwardText = `📨 新消息\n来自: ${userName}\n[CHATID:${chatId}:MSGID:${messageId}]\n\n${text}`;
+      
+      await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: personalUserId,
+          text: forwardText,
+        }),
+      });
+    } else {
+      console.log('App port disabled - message stored but not forwarded');
+    }
 
     return new Response(JSON.stringify({ ok: true }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

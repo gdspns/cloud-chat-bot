@@ -328,11 +328,13 @@ const Index = () => {
     localStorage.setItem('selectedBotId', botId);
   };
 
-  // 构建聊天列表
+  // 构建聊天列表 - 过滤掉Web端口关闭期间的消息（is_read为null表示端口关闭时收到的）
+  const filteredMessages = messages.filter(m => m.is_read !== null);
+  
   const chatItems: ChatItem[] = (() => {
     const chatMap = new Map<string, ChatItem>();
     
-    messages
+    filteredMessages
       .filter(m => m.direction === 'incoming')
       .forEach(m => {
         const key = `${m.bot_activation_id}-${m.telegram_chat_id}`;
@@ -378,7 +380,7 @@ const Index = () => {
         <ChatWindow
           selectedBot={selectedBot}
           selectedChatId={selectedChatId}
-          messages={messages.filter(m => m.bot_activation_id === selectedBotId)}
+          messages={filteredMessages.filter(m => m.bot_activation_id === selectedBotId)}
           onSendMessage={handleSendMessage}
           enableSound={enableSound}
           onToggleSound={() => setEnableSound(!enableSound)}

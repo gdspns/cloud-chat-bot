@@ -17,9 +17,9 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { activationId, chatId, message } = await req.json();
+    const { activationId, chatId, message, isAdmin } = await req.json();
     
-    console.log('Sending message:', { activationId, chatId, message });
+    console.log('Sending message:', { activationId, chatId, message, isAdmin });
 
     if (!activationId || !chatId || !message) {
       return new Response(JSON.stringify({ error: 'Missing required fields' }), {
@@ -28,7 +28,7 @@ serve(async (req) => {
       });
     }
 
-    // Get bot activation (不再检查is_active，让端口控制决定)
+    // Get bot activation
     const { data: activation, error: activationError } = await supabase
       .from('bot_activations')
       .select('*')
@@ -50,20 +50,23 @@ serve(async (req) => {
       });
     }
 
-    // Check trial limit - 试用满20条后不能发送消息
-    if (!activation.is_authorized && activation.trial_messages_used >= activation.trial_limit) {
-      return new Response(JSON.stringify({ error: 'Trial limit reached', trialExceeded: true }), {
-        status: 403,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
+    // 【管理员监控不受限制】如果是管理员发送，跳过所有限制检查
+    if (!isAdmin) {
+      // Check trial limit - 试用满20条后不能发送消息
+      if (!activation.is_authorized && activation.trial_messages_used >= activation.trial_limit) {
+        return new Response(JSON.stringify({ error: 'Trial limit reached', trialExceeded: true }), {
+          status: 403,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
 
-    // 【关键修复】检查Web端口是否启用 - Web端口控制网页端的消息发送
-    if (activation.web_enabled === false) {
-      return new Response(JSON.stringify({ error: 'Web端口已禁用，无法发送消息', webDisabled: true }), {
-        status: 403,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      // 【Web端口控制】检查Web端口是否启用 - 只对普通用户生效
+      if (activation.web_enabled === false) {
+        return new Response(JSON.stringify({ error: 'Web端口已禁用，无法发送消息', webDisabled: true }), {
+          status: 403,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
     }
 
     // Send message to Telegram
@@ -93,13 +96,13 @@ serve(async (req) => {
     await supabase.from('messages').insert({
       bot_activation_id: activationId,
       telegram_chat_id: chatId,
-      telegram_user_name: '我',
+      telegram_user_name: isAdmin ? '管理员' : '我',
       content: message,
       direction: 'outgoing',
     });
 
-    // Update trial count if not authorized
-    if (!activation.is_authorized) {
+    // Update trial count if not authorized and not admin
+    if (!activation.is_authorized && !isAdmin) {
       await supabase
         .from('bot_activations')
         .update({ trial_messages_used: activation.trial_messages_used + 1 })
