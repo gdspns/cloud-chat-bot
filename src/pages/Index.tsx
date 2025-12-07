@@ -402,6 +402,14 @@ const Index = () => {
                 无论您是个人用户还是企业，都能找到适合您的解决方案。
               </p>
             </div>
+                        <div>              
+<h2 className="text-2xl font-bold mb-4">关于机器人</h2>              
+<p className="text-muted-foreground leading-relaxed">
+                我们的Telegram机器人管理平台让您能够轻松管理与用户的对话。
+                支持自动问候、实时消息转发、多机器人同时管理等功能。
+                无论您是个人用户还是企业，都能找到适合您的解决方案。              
+</p>            
+</div>
             <div>
               <h2 className="text-2xl font-bold mb-4">功能特点</h2>
               <ul className="space-y-2 text-muted-foreground">
