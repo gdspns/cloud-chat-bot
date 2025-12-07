@@ -395,21 +395,15 @@ const Index = () => {
         <div className="container mx-auto px-4 py-8">
           <div className="grid md:grid-cols-2 gap-8">
             <div>
-              <h2 className="text-2xl font-bold mb-4">关于机器人</h2>
+              <h2 className="text-2xl font-bold mb-4">关于机器人-激活授权联系QQ：3075554556</h2>
               <p className="text-muted-foreground leading-relaxed">
                 我们的Telegram机器人管理平台让您能够轻松管理与用户的对话。
                 支持自动问候、实时消息转发、多机器人同时管理等功能。
                 无论您是个人用户还是企业，都能找到适合您的解决方案。
+                账号就算被限制只要能创建机器人即可用机器人来实现双向聊天充当客服！
+                网页端不用魔法上网也可以在线接收消息跟回复消息！
               </p>
             </div>
-                        <div>              
-<h2 className="text-2xl font-bold mb-4">关于机器人</h2>              
-<p className="text-muted-foreground leading-relaxed">
-                我们的Telegram机器人管理平台让您能够轻松管理与用户的对话。
-                支持自动问候、实时消息转发、多机器人同时管理等功能。
-                无论您是个人用户还是企业，都能找到适合您的解决方案。              
-</p>            
-</div>
             <div>
               <h2 className="text-2xl font-bold mb-4">功能特点</h2>
               <ul className="space-y-2 text-muted-foreground">
