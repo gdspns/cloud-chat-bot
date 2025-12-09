@@ -170,58 +170,59 @@ export const Admin = () => {
 
   const loadDisabledUsers = async () => {
     try {
-      const { data, error } = await supabase
-        .from('disabled_users')
-        .select('user_id');
+      const { data, error } = await supabase.functions.invoke('manage-bot', {
+        body: { action: 'list-disabled-users' }
+      });
       
       if (error) throw error;
-      setDisabledUsers(new Set((data || []).map((d: any) => d.user_id)));
+      if (data.ok) {
+        setDisabledUsers(new Set((data.data || []).map((d: any) => d.user_id)));
+      }
     } catch (error) {
       console.error('加载禁用用户列表失败:', error);
     }
   };
 
   const handleToggleDisableUser = async (userId: string, isCurrentlyDisabled: boolean) => {
-    try {
+    // 立即更新本地状态
+    setDisabledUsers(prev => {
+      const next = new Set(prev);
       if (isCurrentlyDisabled) {
-        // 解禁用户
-        const { error } = await supabase
-          .from('disabled_users')
-          .delete()
-          .eq('user_id', userId);
-        
-        if (error) throw error;
-        
-        setDisabledUsers(prev => {
-          const next = new Set(prev);
-          next.delete(userId);
-          return next;
-        });
-        
-        toast({
-          title: "已解禁",
-          description: "用户已恢复正常使用",
-        });
+        next.delete(userId);
       } else {
-        // 禁用用户
-        const { error } = await supabase
-          .from('disabled_users')
-          .insert({ user_id: userId });
-        
-        if (error) throw error;
-        
-        setDisabledUsers(prev => {
-          const next = new Set(prev);
-          next.add(userId);
-          return next;
-        });
-        
-        toast({
-          title: "已禁用",
-          description: "用户已被禁止操作",
-        });
+        next.add(userId);
       }
+      return next;
+    });
+
+    try {
+      const { data, error } = await supabase.functions.invoke('manage-bot', {
+        body: { 
+          action: 'toggle-user-disabled',
+          userId,
+          disabled: !isCurrentlyDisabled
+        }
+      });
+      
+      if (error) throw error;
+      if (!data.ok) throw new Error(data.error);
+      
+      toast({
+        title: isCurrentlyDisabled ? "已解禁" : "已禁用",
+        description: isCurrentlyDisabled ? "用户已恢复正常使用" : "用户已被禁止操作",
+      });
     } catch (error: any) {
+      // 恢复原状态
+      setDisabledUsers(prev => {
+        const next = new Set(prev);
+        if (isCurrentlyDisabled) {
+          next.add(userId);
+        } else {
+          next.delete(userId);
+        }
+        return next;
+      });
+      
       toast({
         title: "操作失败",
         description: error.message,
