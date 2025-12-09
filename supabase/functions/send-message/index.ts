@@ -7,7 +7,6 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -17,18 +16,18 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { activationId, chatId, message, isAdmin } = await req.json();
+    const { activationId, chatId, message, photoFileId } = await req.json();
     
-    console.log('Sending message:', { activationId, chatId, message, isAdmin });
+    console.log('Sending message:', { activationId, chatId, message: message?.substring(0, 50), hasPhoto: !!photoFileId });
 
-    if (!activationId || !chatId || !message) {
+    if (!activationId || !chatId || (!message && !photoFileId)) {
       return new Response(JSON.stringify({ error: 'Missing required fields' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    // Get bot activation
+    // 获取机器人信息
     const { data: activation, error: activationError } = await supabase
       .from('bot_activations')
       .select('*')
@@ -42,7 +41,7 @@ serve(async (req) => {
       });
     }
 
-    // Check expiry
+    // 检查过期
     if (activation.expire_at && new Date(activation.expire_at) < new Date()) {
       return new Response(JSON.stringify({ error: 'Bot expired' }), {
         status: 403,
@@ -50,39 +49,58 @@ serve(async (req) => {
       });
     }
 
-    // 【管理员监控不受限制】如果是管理员发送，跳过所有限制检查
-    if (!isAdmin) {
-      // Check trial limit - 试用满20条后不能发送消息
-      if (!activation.is_authorized && activation.trial_messages_used >= activation.trial_limit) {
-        return new Response(JSON.stringify({ error: 'Trial limit reached', trialExceeded: true }), {
-          status: 403,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
-
-      // 【Web端口控制】检查Web端口是否启用 - 只对普通用户生效
-      if (activation.web_enabled === false) {
-        return new Response(JSON.stringify({ error: 'Web端口已禁用，无法发送消息', webDisabled: true }), {
-          status: 403,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
+    // 检查 Web 端口
+    if (!activation.web_enabled) {
+      return new Response(JSON.stringify({ error: 'Web端口已禁用', webDisabled: true }), {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
-    // Send message to Telegram
-    const sendResponse = await fetch(
-      `https://api.telegram.org/bot${activation.bot_token}/sendMessage`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chat_id: chatId,
-          text: message,
-        }),
-      }
-    );
+    // 检查试用限制
+    if (!activation.is_authorized && activation.trial_messages_used >= activation.trial_limit) {
+      return new Response(JSON.stringify({ error: 'Trial limit reached', trialExceeded: true }), {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
-    const sendResult = await sendResponse.json();
+    // 发送消息
+    let sendResult;
+    let messageContent = message;
+
+    if (photoFileId) {
+      // 发送图片
+      const sendResponse = await fetch(
+        `https://api.telegram.org/bot${activation.bot_token}/sendPhoto`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: chatId,
+            photo: photoFileId,
+            caption: message || '',
+          }),
+        }
+      );
+      sendResult = await sendResponse.json();
+      messageContent = message ? `[图片] ${message}` : '[图片]';
+    } else {
+      // 发送文本
+      const sendResponse = await fetch(
+        `https://api.telegram.org/bot${activation.bot_token}/sendMessage`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: chatId,
+            text: message,
+          }),
+        }
+      );
+      sendResult = await sendResponse.json();
+    }
+
     console.log('Telegram API response:', sendResult);
 
     if (!sendResult.ok) {
@@ -92,29 +110,30 @@ serve(async (req) => {
       });
     }
 
-    // Store outgoing message
+    // 保存发送的消息
     await supabase.from('messages').insert({
       bot_activation_id: activationId,
       telegram_chat_id: chatId,
-      telegram_user_name: isAdmin ? '管理员' : '我',
-      content: message,
+      telegram_user_name: '我',
+      content: messageContent,
       direction: 'outgoing',
+      is_read: true,
     });
 
-    // Update trial count if not authorized and not admin
-    if (!activation.is_authorized && !isAdmin) {
+    // 更新试用计数
+    if (!activation.is_authorized) {
+      const newCount = activation.trial_messages_used + 1;
       await supabase
         .from('bot_activations')
-        .update({ trial_messages_used: activation.trial_messages_used + 1 })
+        .update({ trial_messages_used: newCount })
         .eq('id', activation.id);
-        
-      // 同步更新试用记录表
+
       await supabase
         .from('bot_trial_records')
         .upsert({
           bot_token: activation.bot_token,
-          messages_used: activation.trial_messages_used + 1,
-          is_blocked: activation.trial_messages_used + 1 >= activation.trial_limit,
+          messages_used: newCount,
+          is_blocked: newCount >= activation.trial_limit,
         }, { onConflict: 'bot_token' });
     }
 
