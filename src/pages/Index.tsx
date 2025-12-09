@@ -23,23 +23,39 @@ const Index = () => {
 
   // 检查用户登录状态
   useEffect(() => {
+    let mounted = true;
+    
     const checkAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      setUser(session?.user ?? null);
-      setIsLoading(false);
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (mounted) {
+          setUser(session?.user ?? null);
+          setIsLoading(false);
+        }
+      } catch (error) {
+        console.error('Auth check failed:', error);
+        if (mounted) {
+          setIsLoading(false);
+        }
+      }
     };
 
-    checkAuth();
-
+    // 先订阅，再获取session，避免竞态条件
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!mounted) return;
       setUser(session?.user ?? null);
+      setIsLoading(false);
       if (event === 'SIGNED_IN' || event === 'SIGNED_OUT') {
-        // 用户登录/退出时重新加载机器人
         loadBots(session?.user ?? null);
       }
     });
 
-    return () => subscription.unsubscribe();
+    checkAuth();
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   // 播放提示音
