@@ -43,10 +43,29 @@ const Index = () => {
     // 先订阅，再获取session，避免竞态条件
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (!mounted) return;
+      
+      // 退出登录时，先清空状态再更新用户
+      if (event === 'SIGNED_OUT') {
+        setBots([]);
+        setMessages([]);
+        setSelectedBotId(null);
+        setSelectedChatId(null);
+        setUser(null);
+        setIsLoading(false);
+        // 延迟加载游客机器人
+        setTimeout(() => {
+          if (mounted) loadBots(null);
+        }, 0);
+        return;
+      }
+      
       setUser(session?.user ?? null);
       setIsLoading(false);
-      if (event === 'SIGNED_IN' || event === 'SIGNED_OUT') {
-        loadBots(session?.user ?? null);
+      
+      if (event === 'SIGNED_IN') {
+        setTimeout(() => {
+          if (mounted) loadBots(session?.user ?? null);
+        }, 0);
       }
     });
 
