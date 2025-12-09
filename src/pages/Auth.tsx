@@ -20,19 +20,20 @@ const Auth = () => {
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    // 检查是否已登录
-    const checkAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        navigate('/');
-      }
-    };
-    checkAuth();
-
-    // 监听认证状态变化
+    // 监听认证状态变化 - 使用 replace 避免历史记录堆叠
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (session) {
-        navigate('/');
+        // 使用 setTimeout 延迟导航，避免状态更新冲突
+        setTimeout(() => {
+          navigate('/', { replace: true });
+        }, 0);
+      }
+    });
+
+    // 检查是否已登录
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        navigate('/', { replace: true });
       }
     });
 
