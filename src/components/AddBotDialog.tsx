@@ -47,10 +47,10 @@ export const AddBotDialog = ({ open, onOpenChange, onBotAdded, userId }: AddBotD
 
       if (error) throw error;
       
-      if (data.error) {
+      if (!data.ok) {
         toast({
           title: "添加失败",
-          description: data.error,
+          description: data.error || "添加机器人失败",
           variant: "destructive",
         });
         return;
@@ -60,8 +60,9 @@ export const AddBotDialog = ({ open, onOpenChange, onBotAdded, userId }: AddBotD
       setBotToken("");
       setPersonalUserId("");
       setGreetingMessage("你好！👋 有什么可以帮助你的吗？");
+      onOpenChange(false);
       
-      onBotAdded(data.bot);
+      onBotAdded(data.data);
     } catch (error: any) {
       toast({
         title: "添加失败",
