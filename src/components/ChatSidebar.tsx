@@ -1,9 +1,9 @@
-import { useState, useEffect, useRef } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Plus, Bot, MessageCircle, User, Key, Trash2, Calendar, WifiOff } from "lucide-react";
+import { Plus, Bot, MessageCircle, User, Key, Trash2, Calendar } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -38,22 +38,11 @@ export const ChatSidebar = ({
   const [bindingBotId, setBindingBotId] = useState<string | null>(null);
   const [activationCode, setActivationCode] = useState("");
   const [isBinding, setIsBinding] = useState(false);
-  
-  const botsEndRef = useRef<HTMLDivElement>(null);
-  const chatsEndRef = useRef<HTMLDivElement>(null);
 
   const filteredChats = selectedBotId 
     ? chats.filter(chat => chat.botId === selectedBotId)
     : chats;
 
-  // 自动滚动到底部
-  useEffect(() => {
-    botsEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [bots]);
-
-  useEffect(() => {
-    chatsEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [filteredChats]);
 
   const handleBindCode = async (botId: string) => {
     if (!activationCode.trim()) {
@@ -107,9 +96,6 @@ export const ChatSidebar = ({
     return date.toLocaleDateString('zh-CN');
   };
 
-  // 获取选中的机器人
-  const selectedBot = bots.find(b => b.id === selectedBotId);
-  const isWebDisabled = selectedBot && !selectedBot.web_enabled;
 
   return (
     <div className="w-full md:w-80 border-r md:border-b-0 border-b bg-muted/30 flex flex-col h-[450px]">
@@ -159,9 +145,6 @@ export const ChatSidebar = ({
                         <span className="truncate text-[10px]">
                           {bot.bot_token.split(':')[0]}...
                         </span>
-                        {webDisabled && (
-                          <WifiOff className="h-3 w-3 ml-1 text-destructive" />
-                        )}
                         {!bot.is_authorized && (
                           <Badge variant="outline" className="ml-1 text-[8px] px-1 py-0">
                             试用
@@ -196,13 +179,6 @@ export const ChatSidebar = ({
                       </span>
                     </div>
                     
-                    {/* Web端口关闭提示 */}
-                    {webDisabled && (
-                      <div className="text-[10px] text-destructive px-2 flex items-center gap-1">
-                        <WifiOff className="h-3 w-3" />
-                        <span>Web端口已关闭</span>
-                      </div>
-                    )}
                     
                     {/* 绑定激活码 */}
                     {needsActivation && (
@@ -252,7 +228,7 @@ export const ChatSidebar = ({
                 );
               })
             )}
-            <div ref={botsEndRef} />
+            
           </div>
         </ScrollArea>
       </div>
@@ -262,22 +238,10 @@ export const ChatSidebar = ({
         <h3 className="text-xs font-semibold text-muted-foreground p-3 pb-2 flex items-center gap-1">
           <MessageCircle className="h-3 w-3" />
           聊天对话
-          {isWebDisabled && (
-            <Badge variant="destructive" className="ml-2 text-[8px]">
-              Web端口已关闭
-            </Badge>
-          )}
         </h3>
         <ScrollArea className="flex-1">
           <div className="p-2 pt-0 space-y-1">
-            {isWebDisabled ? (
-              <div className="text-center py-4">
-                <WifiOff className="h-6 w-6 mx-auto text-destructive/50 mb-2" />
-                <p className="text-xs text-destructive">
-                  Web端口已关闭，无法查看消息
-                </p>
-              </div>
-            ) : filteredChats.length === 0 ? (
+            {filteredChats.length === 0 ? (
               <div className="text-center py-4">
                 <User className="h-6 w-6 mx-auto text-muted-foreground/50 mb-2" />
                 <p className="text-xs text-muted-foreground">
@@ -316,7 +280,7 @@ export const ChatSidebar = ({
                 </Button>
               ))
             )}
-            <div ref={chatsEndRef} />
+            
           </div>
         </ScrollArea>
       </div>
