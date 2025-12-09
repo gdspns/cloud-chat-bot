@@ -89,7 +89,28 @@ serve(async (req) => {
         }
       );
       sendResult = await sendResponse.json();
-      messageContent = message ? `[图片] ${message}` : '[图片]';
+      
+      // 获取发送的图片URL
+      if (sendResult.ok && sendResult.result?.photo) {
+        const photos = sendResult.result.photo;
+        const largestPhoto = photos[photos.length - 1];
+        const fileId = largestPhoto.file_id;
+        
+        // 获取文件路径
+        const fileResponse = await fetch(
+          `https://api.telegram.org/bot${activation.bot_token}/getFile?file_id=${fileId}`
+        );
+        const fileData = await fileResponse.json();
+        
+        if (fileData.ok && fileData.result.file_path) {
+          const photoUrl = `https://api.telegram.org/file/bot${activation.bot_token}/${fileData.result.file_path}`;
+          messageContent = `[图片] ${photoUrl}` + (message ? `\n${message}` : '');
+        } else {
+          messageContent = message ? `[图片] ${message}` : '[图片]';
+        }
+      } else {
+        messageContent = message ? `[图片] ${message}` : '[图片]';
+      }
     } else if (photoFileId) {
       // 发送图片（通过 file_id）
       const sendResponse = await fetch(
@@ -105,7 +126,27 @@ serve(async (req) => {
         }
       );
       sendResult = await sendResponse.json();
-      messageContent = message ? `[图片] ${message}` : '[图片]';
+      
+      // 获取发送的图片URL
+      if (sendResult.ok && sendResult.result?.photo) {
+        const photos = sendResult.result.photo;
+        const largestPhoto = photos[photos.length - 1];
+        const fileId = largestPhoto.file_id;
+        
+        const fileResponse = await fetch(
+          `https://api.telegram.org/bot${activation.bot_token}/getFile?file_id=${fileId}`
+        );
+        const fileData = await fileResponse.json();
+        
+        if (fileData.ok && fileData.result.file_path) {
+          const photoUrl = `https://api.telegram.org/file/bot${activation.bot_token}/${fileData.result.file_path}`;
+          messageContent = `[图片] ${photoUrl}` + (message ? `\n${message}` : '');
+        } else {
+          messageContent = message ? `[图片] ${message}` : '[图片]';
+        }
+      } else {
+        messageContent = message ? `[图片] ${message}` : '[图片]';
+      }
     } else {
       // 发送文本
       const sendResponse = await fetch(

@@ -75,18 +75,40 @@ export const ChatWindow = ({
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        alert('图片大小不能超过5MB');
-        return;
-      }
-      const reader = new FileReader();
-      reader.onload = () => {
-        setSelectedImage(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+      processImageFile(file);
     }
     // 清空input，允许再次选择同一文件
     e.target.value = '';
+  };
+
+  const processImageFile = (file: File) => {
+    if (file.size > 5 * 1024 * 1024) {
+      alert('图片大小不能超过5MB');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      setSelectedImage(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // 处理粘贴事件
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.type.startsWith('image/')) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (file) {
+          processImageFile(file);
+        }
+        break;
+      }
+    }
   };
 
   const filteredMessages = messages.filter(m => m.telegram_chat_id === selectedChatId);
@@ -353,10 +375,11 @@ export const ChatWindow = ({
           <ImagePlus className="h-4 w-4" />
         </Button>
         <Input
-          placeholder="输入回复消息..."
+          placeholder="输入回复消息...（可粘贴图片）"
           value={replyText}
           onChange={(e) => setReplyText(e.target.value)}
           onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
+          onPaste={handlePaste}
           disabled={!canSend}
           className="flex-1 min-w-0"
         />
