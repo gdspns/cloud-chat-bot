@@ -317,7 +317,7 @@ const Index = () => {
         (payload) => {
           if (payload.eventType === 'INSERT') {
             const newBot = payload.new as unknown as BotActivation;
-            // 检查是否属于当前用户
+            // 检查是否属于当前用户（包括刚同步的游客机器人）
             if (user && newBot.user_id === user.id) {
               setBots(prev => {
                 if (prev.find(b => b.id === newBot.id)) return prev;
@@ -326,9 +326,24 @@ const Index = () => {
             }
           } else if (payload.eventType === 'UPDATE') {
             const updatedBot = payload.new as unknown as BotActivation;
-            // 检查是否属于当前用户
-            if (!botIds.includes(updatedBot.id)) return;
-            setBots(prev => prev.map(b => b.id === updatedBot.id ? updatedBot : b));
+            // 检查是否属于当前用户（包括游客机器人被绑定到用户的情况）
+            if (user && updatedBot.user_id === user.id) {
+              setBots(prev => {
+                const existing = prev.find(b => b.id === updatedBot.id);
+                if (existing) {
+                  return prev.map(b => b.id === updatedBot.id ? updatedBot : b);
+                }
+                // 如果是新绑定到用户的机器人，添加到列表
+                return [updatedBot, ...prev];
+              });
+            } else if (botIds.includes(updatedBot.id)) {
+              // 如果机器人被解绑，从列表移除
+              if (updatedBot.user_id !== user?.id) {
+                setBots(prev => prev.filter(b => b.id !== updatedBot.id));
+              } else {
+                setBots(prev => prev.map(b => b.id === updatedBot.id ? updatedBot : b));
+              }
+            }
           } else if (payload.eventType === 'DELETE') {
             const deletedBot = payload.old as unknown as BotActivation;
             setBots(prev => prev.filter(b => b.id !== deletedBot.id));
