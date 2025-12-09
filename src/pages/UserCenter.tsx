@@ -88,19 +88,31 @@ export const UserCenter = () => {
         {
           event: '*',
           schema: 'public',
-          table: 'bot_activations',
-          filter: `user_id=eq.${user.id}`
+          table: 'bot_activations'
         },
         (payload) => {
           if (payload.eventType === 'INSERT') {
             const newBot = payload.new as unknown as BotActivation;
-            setBots(prev => {
-              if (prev.find(b => b.id === newBot.id)) return prev;
-              return [newBot, ...prev];
-            });
+            // 只处理属于当前用户的机器人
+            if (newBot.user_id === user.id) {
+              setBots(prev => {
+                if (prev.find(b => b.id === newBot.id)) return prev;
+                return [newBot, ...prev];
+              });
+            }
           } else if (payload.eventType === 'UPDATE') {
             const updatedBot = payload.new as unknown as BotActivation;
-            setBots(prev => prev.map(b => b.id === updatedBot.id ? updatedBot : b));
+            // 检查是否是游客机器人被绑定到当前用户
+            if (updatedBot.user_id === user.id) {
+              setBots(prev => {
+                const existing = prev.find(b => b.id === updatedBot.id);
+                if (existing) {
+                  return prev.map(b => b.id === updatedBot.id ? updatedBot : b);
+                }
+                // 游客机器人同步后添加到列表
+                return [updatedBot, ...prev];
+              });
+            }
           } else if (payload.eventType === 'DELETE') {
             const deletedBot = payload.old as unknown as BotActivation;
             setBots(prev => prev.filter(b => b.id !== deletedBot.id));
