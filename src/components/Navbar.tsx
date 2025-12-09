@@ -10,12 +10,9 @@ export const Navbar = () => {
   const [user, setUser] = useState<any>(null);
   
   useEffect(() => {
-    // 监听认证状态变化 - 必须放在获取session之前
+    // 先订阅状态变化，再获取当前session
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      // 使用 setTimeout 确保状态同步更新，避免 React 18 的批量更新延迟
-      setTimeout(() => {
-        setUser(session?.user ?? null);
-      }, 0);
+      setUser(session?.user ?? null);
     });
 
     // 获取当前用户
