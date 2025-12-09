@@ -3,7 +3,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { Trash2, Play, Pause, Calendar, Copy, CheckCircle, XCircle, Key, Globe, Smartphone, List, MessageSquare, Send, LayoutDashboard, Users, Bot, Image as ImageIcon, ChevronDown, ChevronUp, X, ZoomIn, Loader2, Database } from "lucide-react";
+import { Trash2, Play, Pause, Calendar, Copy, CheckCircle, XCircle, Key, Globe, Smartphone, List, MessageSquare, Send, LayoutDashboard, Users, Bot, Image as ImageIcon, ChevronDown, ChevronUp, X, ZoomIn, Loader2, Database, RefreshCw } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -153,17 +153,34 @@ export const Admin = () => {
     loadAllMessages();
     loadDisabledUsers();
     
-    // 定时刷新数据，但不刷新session
-    const interval = setInterval(() => {
-      if (session && isAdmin) {
-        loadActivations();
-        loadAllCodes();
-        loadAllMessages();
-        loadDisabledUsers();
-      }
-    }, 30000);
-    return () => clearInterval(interval);
+    // 移除自动刷新，改为手动刷新
   }, [isAdmin, session]);
+  
+  // 手动刷新数据
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await Promise.all([
+        loadActivations(),
+        loadAllCodes(),
+        loadAllMessages(),
+        loadDisabledUsers(),
+      ]);
+      toast({
+        title: "刷新成功",
+        description: "数据已更新",
+      });
+    } catch (error) {
+      toast({
+        title: "刷新失败",
+        description: "请重试",
+        variant: "destructive",
+      });
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   // 只滚动消息容器内部，不滚动整个页面
   useEffect(() => {
@@ -479,7 +496,7 @@ export const Admin = () => {
   const handleDeleteActivation = async (id: string) => {
     try {
       const { data, error } = await supabase.functions.invoke('manage-bot', {
-        body: { action: 'delete', id }
+        body: { action: 'admin-delete', id }
       });
       
       if (error) throw error;
@@ -489,8 +506,9 @@ export const Admin = () => {
         title: "删除成功",
         description: "激活和Webhook已删除",
       });
-      loadActivations();
-      loadAllCodes();
+      
+      // 从本地状态移除
+      setActivations(prev => prev.filter(a => a.id !== id));
     } catch (error: any) {
       toast({
         title: "删除失败",
@@ -825,6 +843,10 @@ export const Admin = () => {
           <h1 className="text-3xl font-bold">Telegram机器人授权管理</h1>
           <div className="flex gap-2 items-center flex-wrap">
             <span className="text-sm text-muted-foreground">{user.email}</span>
+            <Button variant="outline" onClick={handleManualRefresh} disabled={isRefreshing}>
+              <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+              刷新数据
+            </Button>
             <Button variant="outline" onClick={() => setShowDataExportImport(true)}>
               <Database className="h-4 w-4 mr-2" />
               数据管理
