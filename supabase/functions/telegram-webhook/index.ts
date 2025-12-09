@@ -116,7 +116,7 @@ serve(async (req) => {
 
       // Extract target chat ID from the original forwarded message
       // Format: [CHATID:xxx:MSGID:xxx]
-      const replyText = message.reply_to_message.text || '';
+      const replyText = message.reply_to_message.text || message.reply_to_message.caption || '';
       const chatIdMatch = replyText.match(/\[CHATID:(\d+):MSGID:(\d+)\]/);
       
       if (chatIdMatch) {
