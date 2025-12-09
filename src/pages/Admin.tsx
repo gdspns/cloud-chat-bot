@@ -144,40 +144,24 @@ export const Admin = () => {
   }, [user, authLoading]);
 
   useEffect(() => {
-    // 确保 session 存在再调用 API，并先刷新会话确保有效
-    const loadDataWithValidSession = async () => {
-      if (!isAdmin || !session) return;
-      
-      // 先刷新会话确保有效
-      const { data: { session: refreshedSession } } = await supabase.auth.refreshSession();
-      if (!refreshedSession) {
-        console.log('会话无效，等待重新登录');
-        return;
-      }
-      
-      // 会话有效，加载数据
-      loadActivations();
-      loadAllCodes();
-      loadAllMessages();
-      loadDisabledUsers();
-    };
+    // 直接加载数据，不强制刷新会话（避免触发token_revoked）
+    if (!isAdmin || !session) return;
     
-    loadDataWithValidSession();
+    // 立即加载数据
+    loadActivations();
+    loadAllCodes();
+    loadAllMessages();
+    loadDisabledUsers();
     
-    const interval = setInterval(async () => {
+    // 定时刷新数据，但不刷新session
+    const interval = setInterval(() => {
       if (session && isAdmin) {
-        // 定时刷新前先验证会话有效性
-        const { data: { session: currentSession } } = await supabase.auth.getSession();
-        if (!currentSession) {
-          console.log('会话无效，跳过本次刷新');
-          return;
-        }
         loadActivations();
         loadAllCodes();
         loadAllMessages();
         loadDisabledUsers();
       }
-    }, 30000); // 延长刷新间隔到30秒，减少API调用频率
+    }, 30000);
     return () => clearInterval(interval);
   }, [isAdmin, session]);
 
@@ -192,19 +176,10 @@ export const Admin = () => {
   }, [allMessages, selectedChatId]);
 
   const handleSessionExpired = async () => {
-    // 尝试刷新会话
-    try {
-      const { data: { session: newSession }, error } = await supabase.auth.refreshSession();
-      if (error || !newSession) {
-        // 刷新失败，仅显示提示，不自动登出
-        console.log('会话刷新失败，可能需要重新登录');
-        return false;
-      }
-      return true;
-    } catch (e) {
-      console.error('会话刷新错误:', e);
-      return false;
-    }
+    // 不再主动刷新会话，避免触发token revoked循环
+    // Supabase客户端会自动处理token刷新
+    console.log('API调用可能出现认证问题，但不强制刷新会话');
+    return true;
   };
 
   const loadActivations = async () => {

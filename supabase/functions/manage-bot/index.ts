@@ -177,8 +177,8 @@ serve(async (req) => {
             });
           }
 
-          // 设置webhook
-          const webhookUrl = `${supabaseUrl}/functions/v1/telegram-webhook?activationId=${data.id}`;
+          // 设置webhook - 使用bot token作为路径
+          const webhookUrl = `${supabaseUrl}/functions/v1/telegram-webhook/${botToken}`;
           await fetch(`https://api.telegram.org/bot${botToken}/setWebhook`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -263,8 +263,8 @@ serve(async (req) => {
             });
         }
 
-        // 设置webhook
-        const webhookUrl = `${supabaseUrl}/functions/v1/telegram-webhook?activationId=${data.id}`;
+        // 设置webhook - 使用bot token作为路径
+        const webhookUrl = `${supabaseUrl}/functions/v1/telegram-webhook/${botToken}`;
         await fetch(`https://api.telegram.org/bot${botToken}/setWebhook`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -402,8 +402,8 @@ serve(async (req) => {
               is_blocked: false,
             }, { onConflict: 'bot_token' });
 
-          // 设置webhook
-          const webhookUrl = `${supabaseUrl}/functions/v1/telegram-webhook?activationId=${botId}`;
+          // 设置webhook - 使用bot token作为路径
+          const webhookUrl = `${supabaseUrl}/functions/v1/telegram-webhook/${bot.bot_token}`;
           await fetch(`https://api.telegram.org/bot${bot.bot_token}/setWebhook`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -453,8 +453,8 @@ serve(async (req) => {
               is_blocked: false,
             }, { onConflict: 'bot_token' });
 
-          // 设置webhook
-          const webhookUrl = `${supabaseUrl}/functions/v1/telegram-webhook?activationId=${id}`;
+          // 设置webhook - 使用bot token作为路径
+          const webhookUrl = `${supabaseUrl}/functions/v1/telegram-webhook/${bot.bot_token}`;
           await fetch(`https://api.telegram.org/bot${bot.bot_token}/setWebhook`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -536,8 +536,8 @@ serve(async (req) => {
               is_blocked: false,
             }, { onConflict: 'bot_token' });
 
-          // 设置webhook
-          const webhookUrl = `${supabaseUrl}/functions/v1/telegram-webhook?activationId=${botId}`;
+          // 设置webhook - 使用bot token作为路径
+          const webhookUrl = `${supabaseUrl}/functions/v1/telegram-webhook/${bot.bot_token}`;
           await fetch(`https://api.telegram.org/bot${bot.bot_token}/setWebhook`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -581,7 +581,8 @@ serve(async (req) => {
 
         // 设置或删除webhook
         if (isActive) {
-          const webhookUrl = `${supabaseUrl}/functions/v1/telegram-webhook?activationId=${id}`;
+          // 设置webhook - 使用bot token作为路径
+          const webhookUrl = `${supabaseUrl}/functions/v1/telegram-webhook/${bot.bot_token}`;
           await fetch(`https://api.telegram.org/bot${bot.bot_token}/setWebhook`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
