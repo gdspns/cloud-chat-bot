@@ -3,7 +3,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { Trash2, Play, Pause, Calendar, Copy, CheckCircle, XCircle, Key, Globe, Smartphone, List, MessageSquare, Send, LayoutDashboard, Users, Bot, Image as ImageIcon, ChevronDown, ChevronUp } from "lucide-react";
+import { Trash2, Play, Pause, Calendar, Copy, CheckCircle, XCircle, Key, Globe, Smartphone, List, MessageSquare, Send, LayoutDashboard, Users, Bot, Image as ImageIcon, ChevronDown, ChevronUp, X, ZoomIn } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -94,6 +94,9 @@ export const Admin = () => {
   
   // 用户列表展开相关
   const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
+  
+  // 图片预览相关
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
   
   const { toast } = useToast();
 
@@ -1215,19 +1218,27 @@ export const Admin = () => {
                               <div className="text-xs opacity-70 mb-1">
                                 {msg.telegram_user_name} · {new Date(msg.created_at).toLocaleString('zh-CN')}
                               </div>
-                              {isImageMessage && imageUrl && !isExpiredImage ? (
+                                {isImageMessage && imageUrl && !isExpiredImage ? (
                                 <div className="space-y-2">
                                   <div className="flex items-center gap-1 text-xs opacity-70">
                                     <ImageIcon className="h-3 w-3" />
                                     图片消息
                                   </div>
-                                  <img 
-                                    src={getProxyImageUrl(imageUrl)} 
-                                    alt="图片消息" 
-                                    className="max-w-full rounded cursor-pointer hover:opacity-90 transition-opacity"
-                                    style={{ maxHeight: '300px' }}
-                                    onClick={() => window.open(getProxyImageUrl(imageUrl), '_blank')}
-                                  />
+                                  <div className="relative group">
+                                    <img 
+                                      src={getProxyImageUrl(imageUrl)} 
+                                      alt="图片消息" 
+                                      className="max-w-full rounded cursor-pointer hover:opacity-90 transition-opacity"
+                                      style={{ maxHeight: '200px' }}
+                                      onClick={() => setPreviewImage(getProxyImageUrl(imageUrl))}
+                                    />
+                                    <div 
+                                      className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity rounded cursor-pointer"
+                                      onClick={() => setPreviewImage(getProxyImageUrl(imageUrl))}
+                                    >
+                                      <ZoomIn className="h-8 w-8 text-white" />
+                                    </div>
+                                  </div>
                                 </div>
                               ) : isExpiredImage ? (
                                 <div className="flex items-center gap-2 text-sm opacity-70">
@@ -1375,6 +1386,31 @@ export const Admin = () => {
               )}
             </div>
           </ScrollArea>
+        </DialogContent>
+      </Dialog>
+
+      {/* 图片预览对话框 */}
+      <Dialog open={!!previewImage} onOpenChange={(open) => !open && setPreviewImage(null)}>
+        <DialogContent className="max-w-4xl max-h-[90vh] p-0 overflow-hidden bg-black/90">
+          <DialogHeader className="absolute top-2 right-2 z-10">
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-8 w-8 text-white hover:bg-white/20"
+              onClick={() => setPreviewImage(null)}
+            >
+              <X className="h-5 w-5" />
+            </Button>
+          </DialogHeader>
+          <div className="flex items-center justify-center p-4">
+            {previewImage && (
+              <img 
+                src={previewImage} 
+                alt="预览图片" 
+                className="max-w-full max-h-[85vh] object-contain rounded"
+              />
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </div>
