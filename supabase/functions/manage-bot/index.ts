@@ -523,13 +523,19 @@ serve(async (req) => {
       }
 
       case 'delete': {
-        const { id } = params;
+        const botIdParam = params.id || params.botId;
+        if (!botIdParam) {
+          return new Response(JSON.stringify({ ok: false, error: 'Missing bot id' }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
         
         // Get activation to delete webhook
         const { data: activation } = await supabase
           .from('bot_activations')
           .select('*')
-          .eq('id', id)
+          .eq('id', botIdParam)
           .single();
 
         if (activation && activation.bot_token !== 'PENDING') {
@@ -540,12 +546,12 @@ serve(async (req) => {
         }
 
         // 同时删除相关消息
-        await supabase.from('messages').delete().eq('bot_activation_id', id);
+        await supabase.from('messages').delete().eq('bot_activation_id', botIdParam);
 
         const { error } = await supabase
           .from('bot_activations')
           .delete()
-          .eq('id', id);
+          .eq('id', botIdParam);
 
         if (error) {
           return new Response(JSON.stringify({ ok: false, error: error.message }), {
