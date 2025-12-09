@@ -8,12 +8,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { Navbar } from "@/components/Navbar";
 import { Bot, Trash2, Key, CheckCircle, XCircle, AlertTriangle, WifiOff } from "lucide-react";
 import { AddBotDialog } from "@/components/AddBotDialog";
-import { User } from "@supabase/supabase-js";
+import { useAuth } from "@/hooks/use-auth";
 import type { BotActivation } from "@/types/bot";
 
 export const UserCenter = () => {
   const navigate = useNavigate();
-  const [user, setUser] = useState<User | null>(null);
+  const { user, isLoading: authLoading } = useAuth();
   const [bots, setBots] = useState<BotActivation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showAddBot, setShowAddBot] = useState(false);
@@ -25,35 +25,20 @@ export const UserCenter = () => {
 
   // 检查用户登录状态
   useEffect(() => {
-    const checkAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (!session?.user) {
-        toast({
-          title: "未登录",
-          description: "请先登录",
-          variant: "destructive",
-        });
-        navigate('/auth');
-        return;
-      }
-      
-      setUser(session.user);
-      setIsLoading(false);
-    };
-
-    checkAuth();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_OUT') {
-        navigate('/auth');
-      } else if (session?.user) {
-        setUser(session.user);
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, [navigate, toast]);
+    if (authLoading) return;
+    
+    if (!user) {
+      toast({
+        title: "未登录",
+        description: "请先登录",
+        variant: "destructive",
+      });
+      navigate('/auth');
+      return;
+    }
+    
+    setIsLoading(false);
+  }, [user, authLoading, navigate, toast]);
 
   // 加载用户的机器人和禁用状态
   useEffect(() => {
@@ -256,7 +241,7 @@ export const UserCenter = () => {
     return date.toLocaleDateString('zh-CN');
   };
 
-  if (isLoading) {
+  if (authLoading || isLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <p>加载中...</p>

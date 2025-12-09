@@ -1,16 +1,16 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Navbar } from "@/components/Navbar";
 import { ChatSidebar } from "@/components/ChatSidebar";
 import { ChatWindow } from "@/components/ChatWindow";
 import { AddBotDialog } from "@/components/AddBotDialog";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { User } from "@supabase/supabase-js";
+import { useAuth } from "@/hooks/use-auth";
 import type { BotActivation, Message, ChatItem } from "@/types/bot";
 
 const Index = () => {
   const { toast } = useToast();
-  const [user, setUser] = useState<User | null>(null);
+  const { user, isLoading: authLoading } = useAuth();
   const [bots, setBots] = useState<BotActivation[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [selectedBotId, setSelectedBotId] = useState<string | null>(null);
@@ -19,83 +19,149 @@ const Index = () => {
   const [unreadChats, setUnreadChats] = useState<Set<number>>(new Set());
   const [enableSound, setEnableSound] = useState(true);
   const [soundType, setSoundType] = useState("qq");
-  const [isLoading, setIsLoading] = useState(true);
   const [isUserDisabled, setIsUserDisabled] = useState(false);
+  const hasSyncedRef = useRef(false);
+  const prevUserIdRef = useRef<string | null>(null);
 
-  // 检查用户登录状态
-  useEffect(() => {
-    let mounted = true;
+  // 检查用户是否被禁用
+  const checkUserDisabled = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('disabled_users')
+        .select('id')
+        .eq('user_id', userId)
+        .single();
+      
+      setIsUserDisabled(!!data && !error);
+    } catch (error) {
+      setIsUserDisabled(false);
+    }
+  };
+
+  // 同步游客机器人到用户账户
+  const syncGuestBotsToUser = async (userId: string): Promise<BotActivation[]> => {
+    const guestBotIds = localStorage.getItem('guestBotIds');
+    console.log('syncGuestBotsToUser - guestBotIds from localStorage:', guestBotIds);
+    if (!guestBotIds) return [];
     
-    const checkAuth = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (mounted) {
-          setUser(session?.user ?? null);
-          setIsLoading(false);
-        }
-      } catch (error) {
-        console.error('Auth check failed:', error);
-        if (mounted) {
-          setIsLoading(false);
+    const ids = JSON.parse(guestBotIds);
+    console.log('syncGuestBotsToUser - parsed ids:', ids);
+    if (ids.length === 0) return [];
+    
+    try {
+      const syncedBots: BotActivation[] = [];
+      
+      for (const botId of ids) {
+        console.log('syncGuestBotsToUser - updating bot:', botId, 'to user:', userId);
+        const { data, error } = await supabase
+          .from('bot_activations')
+          .update({ user_id: userId })
+          .eq('id', botId)
+          .is('user_id', null)
+          .select('*')
+          .single();
+        
+        if (error) {
+          console.error('同步机器人失败:', botId, error);
+        } else if (data) {
+          console.log('syncGuestBotsToUser - synced bot:', data);
+          syncedBots.push(data as BotActivation);
         }
       }
-    };
+      
+      localStorage.removeItem('guestBotIds');
+      console.log('syncGuestBotsToUser - total synced:', syncedBots.length);
+      
+      return syncedBots;
+    } catch (error) {
+      console.error('同步游客机器人失败:', error);
+      return [];
+    }
+  };
 
-    // 先订阅，再获取session，避免竞态条件
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (!mounted) return;
-      
-      // 退出登录时，先清空状态再更新用户
-      if (event === 'SIGNED_OUT') {
-        setBots([]);
-        setMessages([]);
-        setSelectedBotId(null);
-        setSelectedChatId(null);
-        setUser(null);
-        setIsLoading(false);
-        // 延迟加载游客机器人
-        setTimeout(() => {
-          if (mounted) loadBots(null);
-        }, 0);
-        return;
-      }
-      
-      setUser(session?.user ?? null);
-      setIsLoading(false);
-      
-      if (event === 'SIGNED_IN' && session?.user) {
-        setTimeout(async () => {
-          if (!mounted) return;
-          // 检查用户是否被禁用
-          await checkUserDisabled(session.user.id);
-          // 同步游客机器人到用户账户，获取同步的机器人
-          const syncedBots = await syncGuestBotsToUser(session.user);
-          // 加载用户的所有机器人
-          const { data, error } = await (supabase
-            .from('bot_activations')
-            .select('*') as any)
-            .eq('user_id', session.user.id)
-            .order('created_at', { ascending: false });
-          
-          if (!error && data) {
-            // 合并同步的机器人和已有机器人，去重
-            const allBots = data as BotActivation[];
-            setBots(allBots);
-          } else if (syncedBots.length > 0) {
-            // 如果加载失败但有同步的机器人，至少显示同步的
-            setBots(syncedBots);
+  // 加载机器人列表
+  const loadBots = useCallback(async (currentUserId: string | null) => {
+    try {
+      if (currentUserId) {
+        const { data, error } = await (supabase
+          .from('bot_activations')
+          .select('*') as any)
+          .eq('user_id', currentUserId)
+          .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        setBots((data || []) as BotActivation[]);
+      } else {
+        const storedBotIds = localStorage.getItem('guestBotIds');
+        if (storedBotIds) {
+          const botIds = JSON.parse(storedBotIds);
+          if (botIds.length > 0) {
+            const { data, error } = await supabase
+              .from('bot_activations')
+              .select('*')
+              .in('id', botIds)
+              .order('created_at', { ascending: false });
+
+            if (!error && data) {
+              setBots(data as unknown as BotActivation[]);
+            }
+          } else {
+            setBots([]);
           }
-        }, 0);
+        } else {
+          setBots([]);
+        }
       }
-    });
-
-    checkAuth();
-
-    return () => {
-      mounted = false;
-      subscription.unsubscribe();
-    };
+    } catch (error) {
+      console.error('加载机器人失败:', error);
+    }
   }, []);
+
+  // 处理用户状态变化
+  useEffect(() => {
+    if (authLoading) return;
+
+    const currentUserId = user?.id ?? null;
+    
+    // 检测用户登录事件
+    if (currentUserId && currentUserId !== prevUserIdRef.current && !hasSyncedRef.current) {
+      hasSyncedRef.current = true;
+      
+      // 异步执行同步和加载
+      (async () => {
+        await checkUserDisabled(currentUserId);
+        const syncedBots = await syncGuestBotsToUser(currentUserId);
+        
+        const { data, error } = await (supabase
+          .from('bot_activations')
+          .select('*') as any)
+          .eq('user_id', currentUserId)
+          .order('created_at', { ascending: false });
+        
+        if (!error && data) {
+          setBots(data as BotActivation[]);
+        } else if (syncedBots.length > 0) {
+          setBots(syncedBots);
+        }
+      })();
+    } else if (!currentUserId && prevUserIdRef.current) {
+      // 用户登出
+      hasSyncedRef.current = false;
+      setBots([]);
+      setMessages([]);
+      setSelectedBotId(null);
+      setSelectedChatId(null);
+      loadBots(null);
+    } else if (!currentUserId && !prevUserIdRef.current) {
+      // 初始状态-未登录
+      loadBots(null);
+    } else if (currentUserId && currentUserId === prevUserIdRef.current) {
+      // 用户已登录且是同一用户
+      loadBots(currentUserId);
+    }
+    
+    prevUserIdRef.current = currentUserId;
+  }, [user, authLoading, loadBots]);
 
   // 播放提示音
   const playNotificationSound = useCallback(() => {
@@ -151,110 +217,6 @@ const Index = () => {
       });
     }
   }, [enableSound, soundType]);
-
-  // 检查用户是否被禁用
-  const checkUserDisabled = async (userId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('disabled_users')
-        .select('id')
-        .eq('user_id', userId)
-        .single();
-      
-      setIsUserDisabled(!!data && !error);
-    } catch (error) {
-      setIsUserDisabled(false);
-    }
-  };
-
-  // 同步游客机器人到用户账户
-  const syncGuestBotsToUser = async (currentUser: User): Promise<BotActivation[]> => {
-    const guestBotIds = localStorage.getItem('guestBotIds');
-    console.log('syncGuestBotsToUser - guestBotIds from localStorage:', guestBotIds);
-    if (!guestBotIds) return [];
-    
-    const ids = JSON.parse(guestBotIds);
-    console.log('syncGuestBotsToUser - parsed ids:', ids);
-    if (ids.length === 0) return [];
-    
-    try {
-      // 逐个更新机器人，避免批量更新的潜在问题
-      const syncedBots: BotActivation[] = [];
-      
-      for (const botId of ids) {
-        console.log('syncGuestBotsToUser - updating bot:', botId, 'to user:', currentUser.id);
-        const { data, error } = await supabase
-          .from('bot_activations')
-          .update({ user_id: currentUser.id })
-          .eq('id', botId)
-          .is('user_id', null)
-          .select('*')
-          .single();
-        
-        if (error) {
-          console.error('同步机器人失败:', botId, error);
-        } else if (data) {
-          console.log('syncGuestBotsToUser - synced bot:', data);
-          syncedBots.push(data as BotActivation);
-        }
-      }
-      
-      localStorage.removeItem('guestBotIds');
-      console.log('syncGuestBotsToUser - total synced:', syncedBots.length);
-      
-      return syncedBots;
-    } catch (error) {
-      console.error('同步游客机器人失败:', error);
-      return [];
-    }
-  };
-
-  // 加载机器人列表
-  const loadBots = useCallback(async (currentUser: User | null = user) => {
-    try {
-      if (currentUser) {
-        // 已登录用户：只加载自己的机器人
-        const { data, error } = await (supabase
-          .from('bot_activations')
-          .select('*') as any)
-          .eq('user_id', currentUser.id)
-          .order('created_at', { ascending: false });
-
-        if (error) throw error;
-        setBots((data || []) as BotActivation[]);
-      } else {
-        // 未登录用户：从 localStorage 加载
-        const storedBotIds = localStorage.getItem('guestBotIds');
-        if (storedBotIds) {
-          const botIds = JSON.parse(storedBotIds);
-          if (botIds.length > 0) {
-            const { data, error } = await supabase
-              .from('bot_activations')
-              .select('*')
-              .in('id', botIds)
-              .order('created_at', { ascending: false });
-
-            if (!error && data) {
-              setBots(data as unknown as BotActivation[]);
-            }
-          } else {
-            setBots([]);
-          }
-        } else {
-          setBots([]);
-        }
-      }
-    } catch (error) {
-      console.error('加载机器人失败:', error);
-    }
-  }, [user]);
-
-  // 初始加载
-  useEffect(() => {
-    if (!isLoading) {
-      loadBots(user);
-    }
-  }, [isLoading, user, loadBots]);
 
   // 恢复选中状态
   useEffect(() => {
@@ -611,7 +573,7 @@ const Index = () => {
     );
   })();
 
-  if (isLoading) {
+  if (authLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <p>加载中...</p>
