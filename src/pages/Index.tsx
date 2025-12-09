@@ -345,11 +345,6 @@ const Index = () => {
   const handleBotAdded = async (newBot: BotActivation) => {
     // 检查用户是否被禁用
     if (user && isUserDisabled) {
-      toast({
-        title: "操作被禁止",
-        description: "您的账户已被禁用，无法添加机器人",
-        variant: "destructive",
-      });
       setShowAddBot(false);
       return;
     }
@@ -378,11 +373,6 @@ const Index = () => {
   const handleDeleteBot = async (botId: string) => {
     // 检查用户是否被禁用
     if (user && isUserDisabled) {
-      toast({
-        title: "操作被禁止",
-        description: "您的账户已被禁用，无法删除机器人",
-        variant: "destructive",
-      });
       return;
     }
     
