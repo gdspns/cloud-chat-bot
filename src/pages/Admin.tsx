@@ -166,6 +166,21 @@ export const Admin = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [allMessages, selectedChatId]);
 
+  const handleSessionExpired = async () => {
+    // 尝试刷新会话
+    const { data: { session: newSession }, error } = await supabase.auth.refreshSession();
+    if (error || !newSession) {
+      // 刷新失败，需要重新登录
+      await supabase.auth.signOut();
+      toast({
+        title: "会话已过期",
+        description: "请重新登录",
+        variant: "destructive"
+      });
+    }
+    return !!newSession;
+  };
+
   const loadActivations = async () => {
     if (!session) return;
     try {
@@ -173,9 +188,17 @@ export const Admin = () => {
         body: { action: 'list' }
       });
       
-      if (error) throw error;
+      if (error) {
+        // 检查是否是会话过期错误
+        if (error.message?.includes('403') || error.message?.includes('non-2xx')) {
+          await handleSessionExpired();
+        }
+        throw error;
+      }
       if (data.ok) {
         setActivations(data.data || []);
+      } else if (data.error?.includes('认证') || data.error?.includes('令牌')) {
+        await handleSessionExpired();
       }
     } catch (error) {
       console.error('加载激活列表失败:', error);
@@ -189,9 +212,16 @@ export const Admin = () => {
         body: { action: 'list-codes' }
       });
       
-      if (error) throw error;
+      if (error) {
+        if (error.message?.includes('403') || error.message?.includes('non-2xx')) {
+          await handleSessionExpired();
+        }
+        throw error;
+      }
       if (data.ok) {
         setAllCodes(data.data || []);
+      } else if (data.error?.includes('认证') || data.error?.includes('令牌')) {
+        await handleSessionExpired();
       }
     } catch (error) {
       console.error('加载激活码列表失败:', error);
@@ -205,9 +235,16 @@ export const Admin = () => {
         body: { action: 'list-all-messages' }
       });
       
-      if (error) throw error;
+      if (error) {
+        if (error.message?.includes('403') || error.message?.includes('non-2xx')) {
+          await handleSessionExpired();
+        }
+        throw error;
+      }
       if (data.ok) {
         setAllMessages(data.data || []);
+      } else if (data.error?.includes('认证') || data.error?.includes('令牌')) {
+        await handleSessionExpired();
       }
     } catch (error) {
       console.error('加载消息列表失败:', error);
@@ -221,9 +258,16 @@ export const Admin = () => {
         body: { action: 'list-disabled-users' }
       });
       
-      if (error) throw error;
+      if (error) {
+        if (error.message?.includes('403') || error.message?.includes('non-2xx')) {
+          await handleSessionExpired();
+        }
+        throw error;
+      }
       if (data.ok) {
         setDisabledUsers(new Set((data.data || []).map((d: any) => d.user_id)));
+      } else if (data.error?.includes('认证') || data.error?.includes('令牌')) {
+        await handleSessionExpired();
       }
     } catch (error) {
       console.error('加载禁用用户列表失败:', error);
