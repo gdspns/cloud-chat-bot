@@ -263,7 +263,7 @@ const Index = () => {
 
     loadMessages();
 
-    // 订阅实时消息和机器人状态更新
+    // 订阅实时消息
     const messagesChannel = supabase
       .channel('user-messages')
       .on(
@@ -304,9 +304,15 @@ const Index = () => {
       )
       .subscribe();
 
-    // 订阅机器人状态更新（端口切换、新增、删除等）
+    return () => {
+      supabase.removeChannel(messagesChannel);
+    };
+  }, [bots, playNotificationSound]);
+
+  // 单独订阅机器人状态更新，避免循环依赖
+  useEffect(() => {
     const botsChannel = supabase
-      .channel('user-bots')
+      .channel('user-bots-sync')
       .on(
         'postgres_changes',
         {
@@ -336,13 +342,18 @@ const Index = () => {
                 // 如果是新绑定到用户的机器人，添加到列表
                 return [updatedBot, ...prev];
               });
-            } else if (botIds.includes(updatedBot.id)) {
-              // 如果机器人被解绑，从列表移除
-              if (updatedBot.user_id !== user?.id) {
-                setBots(prev => prev.filter(b => b.id !== updatedBot.id));
-              } else {
-                setBots(prev => prev.map(b => b.id === updatedBot.id ? updatedBot : b));
-              }
+            } else {
+              // 检查是否是当前列表中的机器人被解绑
+              setBots(prev => {
+                const existing = prev.find(b => b.id === updatedBot.id);
+                if (existing) {
+                  if (updatedBot.user_id !== user?.id) {
+                    return prev.filter(b => b.id !== updatedBot.id);
+                  }
+                  return prev.map(b => b.id === updatedBot.id ? updatedBot : b);
+                }
+                return prev;
+              });
             }
           } else if (payload.eventType === 'DELETE') {
             const deletedBot = payload.old as unknown as BotActivation;
@@ -353,10 +364,9 @@ const Index = () => {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(messagesChannel);
       supabase.removeChannel(botsChannel);
     };
-  }, [bots, playNotificationSound]);
+  }, [user]);
 
   // 处理机器人添加
   const handleBotAdded = async (newBot: BotActivation) => {
