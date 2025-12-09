@@ -333,7 +333,9 @@ serve(async (req) => {
       // 绑定已存在的机器人到激活码 (支持 bind-code 和 bind-existing 两种action名称)
       case 'bind-code':
       case 'bind-existing': {
-        const { activationCode: code, botId } = params;
+        // 兼容两种参数名称: code 或 activationCode
+        const code = params.code || params.activationCode;
+        const { botId } = params;
         
         // 查找激活码
         const { data: codeData, error: codeError } = await supabase
