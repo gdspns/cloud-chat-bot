@@ -34,9 +34,16 @@ export const ChatWindow = ({
   const [isSending, setIsSending] = useState(false);
   const [showTrialDialog, setShowTrialDialog] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    // 只滚动消息框内部，不滚动整个页面
+    if (scrollAreaRef.current) {
+      const scrollContainer = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
+      if (scrollContainer) {
+        scrollContainer.scrollTop = scrollContainer.scrollHeight;
+      }
+    }
   };
 
   useEffect(() => {
@@ -114,16 +121,13 @@ export const ChatWindow = ({
     );
   }
 
-  // Web端口关闭状态
+  // Web端口关闭状态 - 不显示提示，直接返回空聊天界面
   if (webDisabled) {
     return (
       <div className="flex-1 flex flex-col">
         <div className="p-4 border-b flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="font-medium">控制台</span>
-            <span className="px-2 py-0.5 rounded text-xs bg-destructive/20 text-destructive">
-              Web端口已关闭
-            </span>
           </div>
           
           <div className="flex items-center gap-2">
@@ -134,15 +138,9 @@ export const ChatWindow = ({
         </div>
         
         <div className="flex-1 flex items-center justify-center">
-          <div className="text-center p-8">
-            <WifiOff className="h-16 w-16 mx-auto text-destructive/30 mb-4" />
-            <h3 className="text-lg font-medium text-destructive">Web端口已关闭</h3>
-            <p className="text-sm text-muted-foreground mt-2">
-              管理员已关闭此机器人的Web端口，暂时无法查看和发送消息
-            </p>
-            <p className="text-sm text-muted-foreground mt-1">
-              请联系管理员开启Web端口
-            </p>
+          <div className="text-center text-muted-foreground">
+            <p>请从左侧选择一个聊天对话</p>
+            <p className="text-sm mt-1">或等待用户发送消息</p>
           </div>
         </div>
       </div>
@@ -251,8 +249,8 @@ export const ChatWindow = ({
       </div>
 
       {/* 消息列表 */}
-      <div className="flex-1 flex justify-center">
-        <ScrollArea className="p-4 h-[300px] w-full max-w-[400px] overflow-y-auto">
+      <div className="flex-1 flex justify-center overflow-hidden">
+        <ScrollArea ref={scrollAreaRef} className="p-4 h-[300px] w-full max-w-[400px]">
           {filteredMessages.map((message) => (
             <div
               key={message.id}
