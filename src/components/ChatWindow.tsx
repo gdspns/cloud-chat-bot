@@ -5,28 +5,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Send, AlertTriangle, Volume2, VolumeX, Bot, ShoppingCart, WifiOff, Image } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-
-interface Message {
-  id: string;
-  telegram_chat_id: number;
-  telegram_user_name: string;
-  content: string;
-  direction: string;
-  created_at: string;
-  is_admin_reply?: boolean;
-}
-
-interface BotActivation {
-  id: string;
-  bot_token: string;
-  is_active: boolean;
-  is_authorized: boolean;
-  trial_messages_used: number;
-  trial_limit: number;
-  expire_at: string | null;
-  web_enabled: boolean;
-  app_enabled: boolean;
-}
+import type { BotActivation, Message } from "@/types/bot";
 
 interface ChatWindowProps {
   selectedBot: BotActivation | null;

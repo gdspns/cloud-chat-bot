@@ -9,21 +9,7 @@ import { Navbar } from "@/components/Navbar";
 import { Bot, Trash2, Key, CheckCircle, XCircle, AlertTriangle, WifiOff } from "lucide-react";
 import { AddBotDialog } from "@/components/AddBotDialog";
 import { User } from "@supabase/supabase-js";
-
-interface BotActivation {
-  id: string;
-  bot_token: string;
-  personal_user_id?: string;
-  is_active?: boolean;
-  is_authorized?: boolean;
-  trial_messages_used?: number;
-  trial_limit?: number;
-  expire_at?: string | null;
-  created_at?: string;
-  web_enabled?: boolean;
-  app_enabled?: boolean;
-  user_id?: string | null;
-}
+import type { BotActivation } from "@/types/bot";
 
 export const UserCenter = () => {
   const navigate = useNavigate();
@@ -104,14 +90,14 @@ export const UserCenter = () => {
     if (!user) return;
     
     try {
-      const { data, error } = await supabase
+      const { data, error } = await (supabase
         .from('bot_activations')
-        .select('*')
+        .select('*') as any)
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setBots(data as BotActivation[]);
+      setBots((data || []) as BotActivation[]);
     } catch (error) {
       console.error('加载机器人列表失败:', error);
     }

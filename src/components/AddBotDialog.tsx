@@ -7,21 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Bot, Plus } from "lucide-react";
-
-interface BotActivation {
-  id: string;
-  bot_token: string;
-  personal_user_id: string;
-  greeting_message: string;
-  is_active: boolean;
-  is_authorized: boolean;
-  trial_messages_used: number;
-  trial_limit: number;
-  expire_at: string | null;
-  web_enabled: boolean;
-  app_enabled: boolean;
-  user_id: string | null;
-}
+import type { BotActivation } from "@/types/bot";
 
 interface AddBotDialogProps {
   open: boolean;
