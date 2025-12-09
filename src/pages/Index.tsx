@@ -6,42 +6,7 @@ import { AddBotDialog } from "@/components/AddBotDialog";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { User } from "@supabase/supabase-js";
-
-interface Message {
-  id: string;
-  bot_activation_id: string;
-  telegram_chat_id: number;
-  telegram_user_name: string;
-  content: string;
-  direction: string;
-  is_read: boolean | null;
-  created_at: string;
-  is_admin_reply?: boolean;
-}
-
-interface BotActivation {
-  id: string;
-  bot_token: string;
-  personal_user_id: string;
-  greeting_message?: string;
-  is_active?: boolean;
-  is_authorized?: boolean;
-  trial_messages_used?: number;
-  trial_limit?: number;
-  expire_at?: string | null;
-  web_enabled?: boolean;
-  app_enabled?: boolean;
-  user_id?: string | null;
-}
-
-interface ChatItem {
-  chatId: number;
-  userName: string;
-  lastMessage: string;
-  lastTime: string;
-  unread: boolean;
-  botId: string;
-}
+import type { BotActivation, Message, ChatItem } from "@/types/bot";
 
 const Index = () => {
   const { toast } = useToast();
@@ -137,14 +102,14 @@ const Index = () => {
     try {
       if (currentUser) {
         // 已登录用户：只加载自己的机器人
-        const { data, error } = await supabase
+        const { data, error } = await (supabase
           .from('bot_activations')
-          .select('*')
+          .select('*') as any)
           .eq('user_id', currentUser.id)
           .order('created_at', { ascending: false });
 
         if (error) throw error;
-        setBots(data as BotActivation[]);
+        setBots((data || []) as BotActivation[]);
         
         // 同步 localStorage 中的游客机器人到用户账户
         const guestBotIds = localStorage.getItem('guestBotIds');
@@ -152,17 +117,17 @@ const Index = () => {
           const ids = JSON.parse(guestBotIds);
           if (ids.length > 0) {
             // 将游客机器人绑定到用户
-            await supabase
-              .from('bot_activations')
+            await (supabase
+              .from('bot_activations') as any)
               .update({ user_id: currentUser.id })
               .in('id', ids)
               .is('user_id', null);
             
             localStorage.removeItem('guestBotIds');
             // 重新加载
-            const { data: newData } = await supabase
+            const { data: newData } = await (supabase
               .from('bot_activations')
-              .select('*')
+              .select('*') as any)
               .eq('user_id', currentUser.id)
               .order('created_at', { ascending: false });
             if (newData) setBots(newData as BotActivation[]);
@@ -181,7 +146,7 @@ const Index = () => {
               .order('created_at', { ascending: false });
 
             if (!error && data) {
-              setBots(data as BotActivation[]);
+              setBots(data as unknown as BotActivation[]);
             }
           } else {
             setBots([]);
@@ -235,7 +200,7 @@ const Index = () => {
         .order('created_at', { ascending: true });
 
       if (!error && data) {
-        setMessages(data as Message[]);
+        setMessages(data as unknown as Message[]);
       }
     };
 
@@ -252,7 +217,7 @@ const Index = () => {
           table: 'messages',
         },
         (payload) => {
-          const newMessage = payload.new as Message;
+          const newMessage = payload.new as unknown as Message;
           // 检查是否属于当前用户的机器人
           if (!botIds.includes(newMessage.bot_activation_id)) return;
           
@@ -293,7 +258,7 @@ const Index = () => {
           table: 'bot_activations',
         },
         (payload) => {
-          const updatedBot = payload.new as BotActivation;
+          const updatedBot = payload.new as unknown as BotActivation;
           // 检查是否属于当前用户
           if (!botIds.includes(updatedBot.id)) return;
           

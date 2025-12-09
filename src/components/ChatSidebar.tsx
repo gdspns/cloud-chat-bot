@@ -7,29 +7,7 @@ import { Plus, Bot, MessageCircle, User, Key, Trash2, Calendar, WifiOff } from "
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-
-interface BotActivation {
-  id: string;
-  bot_token: string;
-  personal_user_id: string;
-  is_active: boolean;
-  is_authorized: boolean;
-  trial_messages_used: number;
-  trial_limit: number;
-  expire_at: string | null;
-  web_enabled: boolean;
-  app_enabled: boolean;
-  user_id: string | null;
-}
-
-interface ChatItem {
-  chatId: number;
-  userName: string;
-  lastMessage: string;
-  lastTime: string;
-  unread: boolean;
-  botId: string;
-}
+import type { BotActivation, ChatItem } from "@/types/bot";
 
 interface ChatSidebarProps {
   bots: BotActivation[];
