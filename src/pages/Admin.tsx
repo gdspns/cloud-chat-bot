@@ -144,22 +144,35 @@ export const Admin = () => {
   }, [user, authLoading]);
 
   useEffect(() => {
-    // 确保 session 存在再调用 API
-    if (isAdmin && session) {
+    // 确保 session 存在再调用 API，并先刷新会话确保有效
+    const loadDataWithValidSession = async () => {
+      if (!isAdmin || !session) return;
+      
+      // 先刷新会话确保有效
+      const { data: { session: refreshedSession } } = await supabase.auth.refreshSession();
+      if (!refreshedSession) {
+        console.log('会话无效，等待重新登录');
+        return;
+      }
+      
+      // 会话有效，加载数据
       loadActivations();
       loadAllCodes();
       loadAllMessages();
       loadDisabledUsers();
-      const interval = setInterval(() => {
-        if (session) {
-          loadActivations();
-          loadAllCodes();
-          loadAllMessages();
-          loadDisabledUsers();
-        }
-      }, 10000);
-      return () => clearInterval(interval);
-    }
+    };
+    
+    loadDataWithValidSession();
+    
+    const interval = setInterval(() => {
+      if (session && isAdmin) {
+        loadActivations();
+        loadAllCodes();
+        loadAllMessages();
+        loadDisabledUsers();
+      }
+    }, 10000);
+    return () => clearInterval(interval);
   }, [isAdmin, session]);
 
   useEffect(() => {
