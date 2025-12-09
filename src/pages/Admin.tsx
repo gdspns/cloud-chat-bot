@@ -3,7 +3,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { Trash2, Play, Pause, Calendar, Copy, CheckCircle, XCircle, Key, Globe, Smartphone, List, MessageSquare, Send, LayoutDashboard, Users, Bot, Image as ImageIcon, ChevronDown, ChevronUp, X, ZoomIn } from "lucide-react";
+import { Trash2, Play, Pause, Calendar, Copy, CheckCircle, XCircle, Key, Globe, Smartphone, List, MessageSquare, Send, LayoutDashboard, Users, Bot, Image as ImageIcon, ChevronDown, ChevronUp, X, ZoomIn, Loader2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { useAuth } from "@/hooks/use-auth";
 
 interface BotActivation {
   id: string;
@@ -54,15 +55,16 @@ interface Message {
   };
 }
 
-const ADMIN_USERNAME = "admin";
-const ADMIN_PASSWORD = "qqai18301";
-
 export const Admin = () => {
-  const [isLoggedIn, setIsLoggedIn] = useState(() => {
-    return localStorage.getItem('adminLoggedIn') === 'true';
-  });
-  const [username, setUsername] = useState("");
+  const { user, session, isLoading: authLoading } = useAuth();
+  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+  const [isCheckingRole, setIsCheckingRole] = useState(true);
+  
+  // 登录表单
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  
   const [activations, setActivations] = useState<BotActivation[]>([]);
   const [allCodes, setAllCodes] = useState<ActivationCode[]>([]);
   const [newBotToken, setNewBotToken] = useState("");
@@ -103,8 +105,42 @@ export const Admin = () => {
   
   const { toast } = useToast();
 
+  // 检查用户是否是管理员
   useEffect(() => {
-    if (isLoggedIn) {
+    const checkAdminRole = async () => {
+      if (authLoading) return;
+      
+      if (!user) {
+        setIsAdmin(false);
+        setIsCheckingRole(false);
+        return;
+      }
+
+      try {
+        const { data, error } = await supabase.rpc('has_role', {
+          _user_id: user.id,
+          _role: 'admin'
+        });
+
+        if (error) {
+          console.error('检查管理员角色失败:', error);
+          setIsAdmin(false);
+        } else {
+          setIsAdmin(data === true);
+        }
+      } catch (error) {
+        console.error('检查管理员角色错误:', error);
+        setIsAdmin(false);
+      } finally {
+        setIsCheckingRole(false);
+      }
+    };
+
+    checkAdminRole();
+  }, [user, authLoading]);
+
+  useEffect(() => {
+    if (isAdmin) {
       loadActivations();
       loadAllCodes();
       loadAllMessages();
@@ -117,7 +153,7 @@ export const Admin = () => {
       }, 10000);
       return () => clearInterval(interval);
     }
-  }, [isLoggedIn]);
+  }, [isAdmin]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -231,26 +267,45 @@ export const Admin = () => {
     }
   };
 
-  const handleLogin = () => {
-    if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
-      setIsLoggedIn(true);
-      localStorage.setItem('adminLoggedIn', 'true');
+  const handleLogin = async () => {
+    if (!email || !password) {
       toast({
-        title: "登录成功",
-        description: "欢迎访问管理后台",
-      });
-    } else {
-      toast({
-        title: "登录失败",
-        description: "用户名或密码错误",
+        title: "错误",
+        description: "请输入邮箱和密码",
         variant: "destructive",
       });
+      return;
+    }
+
+    setIsLoggingIn(true);
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) throw error;
+
+      // 登录成功后，useAuth 会自动更新状态，触发 checkAdminRole
+      toast({
+        title: "登录成功",
+        description: "正在验证管理员权限...",
+      });
+    } catch (error: any) {
+      toast({
+        title: "登录失败",
+        description: error.message || "邮箱或密码错误",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoggingIn(false);
     }
   };
 
-  const handleLogout = () => {
-    setIsLoggedIn(false);
-    localStorage.removeItem('adminLoggedIn');
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setIsAdmin(null);
+    setIsCheckingRole(true);
     toast({
       title: "已退出",
       description: "您已成功退出管理后台",
@@ -638,37 +693,67 @@ export const Admin = () => {
       .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
   };
 
-  if (!isLoggedIn) {
+  // 加载中状态
+  if (authLoading || isCheckingRole) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-6">
+        <Card className="p-8 w-full max-w-md flex flex-col items-center gap-4">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-muted-foreground">正在验证权限...</p>
+        </Card>
+      </div>
+    );
+  }
+
+  // 未登录或非管理员
+  if (!user || isAdmin === false) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-6">
         <Card className="p-8 w-full max-w-md">
           <h1 className="text-2xl font-bold mb-6 text-center">Telegram机器人管理后台</h1>
-          <div className="space-y-4">
-            <div>
-              <label className="text-sm font-medium">用户名</label>
-              <Input
-                type="text"
-                placeholder="请输入用户名"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                className="mt-2"
-              />
+          {user && isAdmin === false ? (
+            <div className="text-center space-y-4">
+              <p className="text-destructive">您没有管理员权限</p>
+              <p className="text-sm text-muted-foreground">当前账号: {user.email}</p>
+              <Button onClick={handleLogout} variant="outline" className="w-full">
+                退出登录
+              </Button>
             </div>
-            <div>
-              <label className="text-sm font-medium">密码</label>
-              <Input
-                type="password"
-                placeholder="请输入密码"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
-                className="mt-2"
-              />
+          ) : (
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-medium">管理员邮箱</label>
+                <Input
+                  type="email"
+                  placeholder="请输入管理员邮箱"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="mt-2"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">密码</label>
+                <Input
+                  type="password"
+                  placeholder="请输入密码"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
+                  className="mt-2"
+                />
+              </div>
+              <Button onClick={handleLogin} className="w-full" disabled={isLoggingIn}>
+                {isLoggingIn ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    登录中...
+                  </>
+                ) : (
+                  "登录"
+                )}
+              </Button>
             </div>
-            <Button onClick={handleLogin} className="w-full">
-              登录
-            </Button>
-          </div>
+          )}
         </Card>
       </div>
     );
@@ -682,7 +767,8 @@ export const Admin = () => {
       <div className="container mx-auto max-w-7xl">
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-3xl font-bold">Telegram机器人授权管理</h1>
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center">
+            <span className="text-sm text-muted-foreground">{user.email}</span>
             <Button variant="outline" onClick={() => setShowCodeList(true)}>
               <List className="h-4 w-4 mr-2" />
               激活码列表
@@ -798,29 +884,15 @@ export const Admin = () => {
                                         // 解绑该用户所有机器人
                                         info.bots.forEach(bot => {
                                           supabase.functions.invoke('manage-bot', {
-                                            body: { action: 'unbind-user', id: bot.id }
+                                            body: { action: 'delete', id: bot.id }
                                           });
-                                        });
-                                        toast({
-                                          title: "已解绑",
-                                          description: `用户 ${info.email || userId} 的机器人已解绑`,
                                         });
                                         loadActivations();
                                       }
                                     }}
-                                    title="删除用户绑定"
                                   >
                                     <Trash2 className="h-3 w-3" />
                                   </Button>
-                                  <Switch
-                                    checked={disabledUsers.has(userId)}
-                                    onCheckedChange={() => handleToggleDisableUser(userId, disabledUsers.has(userId))}
-                                    className="data-[state=checked]:bg-destructive h-5 w-9"
-                                    title={disabledUsers.has(userId) ? '点击解禁' : '点击禁用'}
-                                  />
-                                  {disabledUsers.has(userId) && (
-                                    <span className="text-xs text-destructive">已禁用</span>
-                                  )}
                                 </div>
                               </TableCell>
                               <TableCell className="font-mono text-xs">{userId.substring(0, 8)}...</TableCell>
@@ -834,7 +906,7 @@ export const Admin = () => {
                                     onClick={() => {
                                       setExpandedUsers(prev => {
                                         const next = new Set(prev);
-                                        if (next.has(userId)) {
+                                        if (isExpanded) {
                                           next.delete(userId);
                                         } else {
                                           next.add(userId);
@@ -848,54 +920,40 @@ export const Admin = () => {
                                 </div>
                               </TableCell>
                               <TableCell>
-                                <Badge className={info.authorizedCount > 0 ? 'bg-green-500/20 text-green-700' : 'bg-yellow-500/20 text-yellow-700'}>
-                                  {info.authorizedCount > 0 ? `${info.authorizedCount}个已激活` : '试用中'}
+                                <Badge variant={info.authorizedCount > 0 ? "default" : "secondary"}>
+                                  {info.authorizedCount}/{info.botCount} 已授权
                                 </Badge>
                               </TableCell>
                               <TableCell>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => {
-                                    navigator.clipboard.writeText(userId);
-                                    toast({ title: "已复制", description: "用户ID已复制到剪贴板" });
-                                  }}
-                                >
-                                  <Copy className="h-3 w-3" />
-                                </Button>
+                                <div className="flex items-center gap-2">
+                                  <Switch
+                                    checked={!disabledUsers.has(userId)}
+                                    onCheckedChange={() => handleToggleDisableUser(userId, disabledUsers.has(userId))}
+                                  />
+                                  <span className="text-xs text-muted-foreground">
+                                    {disabledUsers.has(userId) ? '已禁用' : '正常'}
+                                  </span>
+                                </div>
                               </TableCell>
                             </TableRow>
-                            {isExpanded && info.bots.map(bot => {
-                              const botExpired = bot.expire_at && new Date(bot.expire_at) < new Date();
-                              return (
-                                <TableRow key={`${userId}-${bot.id}`} className="bg-muted/50">
-                                  <TableCell colSpan={2} className="pl-8">
-                                    <div className="flex items-center gap-2">
-                                      <Bot className="h-4 w-4 text-muted-foreground" />
-                                      <span className="font-mono text-xs">{bot.bot_token.substring(0, 20)}...</span>
-                                    </div>
-                                  </TableCell>
-                                  <TableCell>
-                                    <span className="text-xs">{bot.trial_messages_used}/{bot.trial_limit} 消息</span>
-                                  </TableCell>
-                                  <TableCell>
-                                    <div className="flex gap-1 flex-wrap">
-                                      {bot.is_authorized ? (
-                                        <Badge className="bg-blue-500/20 text-blue-700 text-xs">已激活</Badge>
-                                      ) : (
-                                        <Badge className="bg-yellow-500/20 text-yellow-700 text-xs">试用</Badge>
-                                      )}
-                                      {botExpired && <Badge variant="destructive" className="text-xs">已过期</Badge>}
-                                    </div>
-                                  </TableCell>
-                                  <TableCell>
-                                    <span className="text-xs text-muted-foreground">
-                                      {bot.expire_at ? new Date(bot.expire_at).toLocaleDateString('zh-CN') : '-'}
-                                    </span>
-                                  </TableCell>
-                                </TableRow>
-                              );
-                            })}
+                            {isExpanded && info.bots.map(bot => (
+                              <TableRow key={bot.id} className="bg-muted/30">
+                                <TableCell colSpan={2} className="pl-8">
+                                  <span className="font-mono text-xs">{bot.bot_token.substring(0, 20)}...</span>
+                                </TableCell>
+                                <TableCell>
+                                  <span className="text-xs">{bot.trial_messages_used}/{bot.trial_limit}</span>
+                                </TableCell>
+                                <TableCell>
+                                  <Badge variant={bot.is_authorized ? "default" : bot.expire_at && new Date(bot.expire_at) < new Date() ? "destructive" : "secondary"}>
+                                    {bot.is_authorized ? '已激活' : bot.expire_at && new Date(bot.expire_at) < new Date() ? '已过期' : '试用中'}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell>
+                                  {bot.expire_at ? new Date(bot.expire_at).toLocaleDateString() : '-'}
+                                </TableCell>
+                              </TableRow>
+                            ))}
                           </>
                         );
                       });
@@ -904,88 +962,43 @@ export const Admin = () => {
                 </Table>
               </ScrollArea>
             </Card>
-
-            {/* 机器人列表概览 */}
-            <Card className="p-6">
-              <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-                <Bot className="h-5 w-5" />
-                机器人列表
-              </h2>
-              <ScrollArea className="h-[300px]">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>机器人令牌</TableHead>
-                      <TableHead>所属用户</TableHead>
-                      <TableHead>状态</TableHead>
-                      <TableHead>消息数</TableHead>
-                      <TableHead>过期日期</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {realBots.map(bot => {
-                      const isExpired = bot.expire_at && new Date(bot.expire_at) < new Date();
-                      return (
-                        <TableRow key={bot.id}>
-                          <TableCell className="font-mono text-xs">{bot.bot_token.substring(0, 15)}...</TableCell>
-                          <TableCell>{bot.user_email || (bot.user_id ? `${bot.user_id.substring(0, 8)}...` : '未绑定')}</TableCell>
-                          <TableCell>
-                            <div className="flex gap-1 flex-wrap">
-                              <Badge className={bot.is_active && !isExpired ? 'bg-green-500/20 text-green-700' : 'bg-gray-500/20 text-gray-500'}>
-                                {bot.is_active && !isExpired ? '运行中' : '已停止'}
-                              </Badge>
-                              {bot.is_authorized ? (
-                                <Badge className="bg-blue-500/20 text-blue-700">已激活</Badge>
-                              ) : (
-                                <Badge className="bg-yellow-500/20 text-yellow-700">试用</Badge>
-                              )}
-                              {isExpired && <Badge variant="destructive">已过期</Badge>}
-                            </div>
-                          </TableCell>
-                          <TableCell>{bot.trial_messages_used}/{bot.trial_limit}</TableCell>
-                          <TableCell>{bot.expire_at ? new Date(bot.expire_at).toLocaleDateString('zh-CN') : '-'}</TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </ScrollArea>
-            </Card>
           </TabsContent>
 
+          {/* 机器人管理 */}
           <TabsContent value="bots" className="space-y-4">
+            {/* 添加机器人表单 */}
             <Card className="p-6">
-              <h2 className="text-xl font-semibold mb-4">添加新的授权</h2>
-              <div className="grid md:grid-cols-2 gap-4">
+              <h2 className="text-xl font-semibold mb-4">添加新机器人</h2>
+              <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div>
-                  <label className="text-sm font-medium">机器人令牌 *</label>
+                  <Label>机器人令牌</Label>
                   <Input
-                    placeholder="输入机器人令牌..."
                     value={newBotToken}
                     onChange={(e) => setNewBotToken(e.target.value)}
+                    placeholder="Bot Token"
                     className="mt-2"
                   />
                 </div>
                 <div>
-                  <label className="text-sm font-medium">个人用户ID *</label>
+                  <Label>个人用户ID</Label>
                   <Input
-                    placeholder="输入个人用户ID..."
                     value={newPersonalUserId}
                     onChange={(e) => setNewPersonalUserId(e.target.value)}
+                    placeholder="Personal User ID"
                     className="mt-2"
                   />
                 </div>
                 <div>
-                  <label className="text-sm font-medium">欢迎消息</label>
+                  <Label>问候语</Label>
                   <Input
-                    placeholder="输入欢迎消息..."
                     value={newGreetingMessage}
                     onChange={(e) => setNewGreetingMessage(e.target.value)}
+                    placeholder="问候消息"
                     className="mt-2"
                   />
                 </div>
                 <div>
-                  <label className="text-sm font-medium">过期日期 *</label>
+                  <Label>过期日期</Label>
                   <Input
                     type="date"
                     value={newExpiryDate}
@@ -995,505 +1008,367 @@ export const Admin = () => {
                 </div>
               </div>
               <Button onClick={handleAddActivation} className="mt-4" disabled={isLoading}>
-                {isLoading ? "添加中..." : "添加授权"}
+                {isLoading ? "添加中..." : "添加激活"}
               </Button>
             </Card>
 
+            {/* 机器人列表 */}
             <Card className="p-6">
-              <h2 className="text-xl font-semibold mb-4">授权列表 ({realBots.length})</h2>
+              <h2 className="text-xl font-semibold mb-4">机器人列表</h2>
               <ScrollArea className="h-[500px]">
-                <div className="space-y-4 pr-4">
-                  {realBots.length === 0 ? (
-                    <p className="text-muted-foreground text-center py-8">暂无授权记录</p>
-                  ) : (
-                    realBots.map((activation) => {
-                      const isExpired = activation.expire_at && new Date(activation.expire_at) < new Date();
-                      const trialExceeded = !activation.is_authorized && activation.trial_messages_used >= activation.trial_limit;
-                      
-                      // 查找绑定的激活码信息
-                      const boundCode = allCodes.find(c => c.used_by_bot_id === activation.id);
-                      
-                      return (
-                        <Card key={activation.id} className={`p-4 ${isExpired || trialExceeded ? 'border-destructive' : ''}`}>
-                          <div className="flex justify-between items-start">
-                            <div className="flex-1 space-y-2">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className={`px-2 py-1 rounded text-xs font-semibold ${
-                                  activation.is_active && !isExpired 
-                                    ? 'bg-green-500/20 text-green-700 dark:text-green-300' 
-                                    : 'bg-gray-500/20 text-gray-700 dark:text-gray-300'
-                                }`}>
-                                  {activation.is_active && !isExpired ? '运行中' : '已停止'}
-                                </span>
-                                {activation.is_authorized ? (
-                                  <span className="px-2 py-1 rounded text-xs font-semibold bg-blue-500/20 text-blue-700 dark:text-blue-300 flex items-center gap-1">
-                                    <CheckCircle className="h-3 w-3" />
-                                    已激活
-                                  </span>
-                                ) : (
-                                  <span className="px-2 py-1 rounded text-xs font-semibold bg-yellow-500/20 text-yellow-700 dark:text-yellow-300 flex items-center gap-1">
-                                    <XCircle className="h-3 w-3" />
-                                    试用中
-                                  </span>
-                                )}
-                                {isExpired && (
-                                  <span className="px-2 py-1 rounded text-xs font-semibold bg-destructive/20 text-destructive">
-                                    已过期
-                                  </span>
-                                )}
-                                {trialExceeded && (
-                                  <span className="px-2 py-1 rounded text-xs font-semibold bg-red-500/20 text-red-700 dark:text-red-300">
-                                    试用已满
-                                  </span>
-                                )}
-                                <span className="px-2 py-1 rounded text-xs font-semibold bg-purple-500/20 text-purple-700 dark:text-purple-300">
-                                  消息: {activation.trial_messages_used}/{activation.trial_limit}
-                                </span>
-                              </div>
-                              <div className="grid md:grid-cols-2 gap-2 text-sm">
-                                <div>
-                                  <span className="font-medium">机器人令牌:</span> {activation.bot_token.substring(0, 15)}...
-                                </div>
-                                <div>
-                                  <span className="font-medium">个人ID:</span> {activation.personal_user_id}
-                                </div>
-                                <div>
-                                  <span className="font-medium">激活码:</span> {activation.activation_code}
-                                </div>
-                                <div>
-                                  <span className="font-medium">过期日期:</span> {activation.expire_at ? new Date(activation.expire_at).toLocaleDateString('zh-CN') : '无'}
-                                </div>
-                                <div className="md:col-span-2">
-                                  <span className="font-medium">所属用户:</span>{' '}
-                                  <span className="text-blue-600 dark:text-blue-400">
-                                    {activation.user_email || (activation.user_id ? `ID: ${activation.user_id.substring(0, 8)}...` : '游客/未绑定')}
-                                  </span>
-                                </div>
-                              </div>
-                              
-                              {/* 显示用户绑定的激活码 */}
-                              {boundCode && (
-                                <div className="text-sm text-muted-foreground">
-                                  <span className="font-medium">绑定激活码:</span> {boundCode.code}
-                                </div>
-                              )}
-                              
-                              {/* 过期或未授权机器人的激活码绑定 */}
-                              {(isExpired || !activation.is_authorized) && (
-                                <div className="pt-2 border-t mt-2">
-                                  {bindingBotId === activation.id ? (
-                                    <div className="flex gap-2">
-                                      <Input
-                                        placeholder="输入激活码..."
-                                        value={activationCode}
-                                        onChange={(e) => setActivationCode(e.target.value)}
-                                        className="flex-1"
-                                      />
-                                      <Button 
-                                        size="sm" 
-                                        onClick={() => handleBindCode(activation.id)}
-                                        disabled={isBinding}
-                                      >
-                                        {isBinding ? '绑定中...' : '绑定'}
-                                      </Button>
-                                      <Button 
-                                        size="sm" 
-                                        variant="outline"
-                                        onClick={() => {
-                                          setBindingBotId(null);
-                                          setActivationCode("");
-                                        }}
-                                      >
-                                        取消
-                                      </Button>
-                                    </div>
-                                  ) : (
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() => setBindingBotId(activation.id)}
-                                      className="w-full"
-                                    >
-                                      <Key className="h-4 w-4 mr-2" />
-                                      {isExpired ? '续期激活' : '绑定激活码'}
-                                    </Button>
-                                  )}
-                                </div>
-                              )}
-                              
-                              {/* 端口控制开关 */}
-                              <div className="flex items-center gap-6 pt-2 border-t mt-2">
-                                <div className="flex items-center gap-2">
-                                  <Globe className="h-4 w-4 text-muted-foreground" />
-                                  <Label htmlFor={`web-${activation.id}`} className="text-sm">Web端</Label>
-                                  <Switch
-                                    id={`web-${activation.id}`}
-                                    checked={activation.web_enabled !== false}
-                                    onCheckedChange={() => handleTogglePort(activation.id, 'web', activation.web_enabled !== false)}
-                                    className="data-[state=checked]:bg-green-500"
-                                  />
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <Smartphone className="h-4 w-4 text-muted-foreground" />
-                                  <Label htmlFor={`app-${activation.id}`} className="text-sm">App端</Label>
-                                  <Switch
-                                    id={`app-${activation.id}`}
-                                    checked={activation.app_enabled !== false}
-                                    onCheckedChange={() => handleTogglePort(activation.id, 'app', activation.app_enabled !== false)}
-                                    className="data-[state=checked]:bg-green-500"
-                                  />
-                                </div>
-                              </div>
+                <div className="space-y-4">
+                  {realBots.map((activation) => (
+                    <Card key={activation.id} className="p-4">
+                      <div className="flex flex-col gap-3">
+                        <div className="flex justify-between items-start">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono text-sm">{activation.bot_token.substring(0, 30)}...</span>
+                              <Badge variant={activation.is_active ? "default" : "secondary"}>
+                                {activation.is_active ? "运行中" : "已停止"}
+                              </Badge>
+                              <Badge variant={activation.is_authorized ? "default" : "outline"}>
+                                {activation.is_authorized ? "已激活" : "试用中"}
+                              </Badge>
                             </div>
-                            <div className="flex gap-2 ml-4 flex-wrap">
-                              {!activation.is_authorized && (
-                                <Button
-                                  size="sm"
-                                  variant="default"
-                                  onClick={() => handleAuthorize(activation.id)}
-                                  title="授权激活"
-                                >
-                                  <CheckCircle className="h-4 w-4" />
-                                </Button>
-                              )}
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleCopyLink(activation.activation_code)}
-                                title="复制激活链接"
-                              >
-                                <Copy className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant={activation.is_active ? "destructive" : "default"}
-                                onClick={() => handleToggleActive(activation.id, activation.is_active)}
-                              >
-                                {activation.is_active ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-                              </Button>
-                              <Dialog>
-                                <DialogTrigger asChild>
-                                  <Button size="sm" variant="outline">
-                                    <Calendar className="h-4 w-4" />
-                                  </Button>
-                                </DialogTrigger>
-                                <DialogContent>
-                                  <DialogHeader>
-                                    <DialogTitle>延长使用日期</DialogTitle>
-                                  </DialogHeader>
-                                  <div className="space-y-4">
-                                    <Input
-                                      type="date"
-                                      defaultValue={activation.expire_at ? activation.expire_at.split('T')[0] : ''}
-                                      onChange={(e) => {
-                                        const newDate = e.target.value;
-                                        if (newDate) {
-                                          handleExtendDate(activation.id, newDate);
-                                        }
-                                      }}
-                                    />
-                                  </div>
-                                </DialogContent>
-                              </Dialog>
-                              <Button
-                                size="sm"
-                                variant="destructive"
-                                onClick={() => handleDeleteActivation(activation.id)}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
+                            <div className="text-xs text-muted-foreground">
+                              用户: {activation.user_email || activation.user_id?.substring(0, 8) || '无'}
+                              {" | "}消息: {activation.trial_messages_used}/{activation.trial_limit}
+                              {activation.expire_at && ` | 到期: ${new Date(activation.expire_at).toLocaleDateString()}`}
                             </div>
                           </div>
-                        </Card>
-                      );
-                    })
-                  )}
+                          <div className="flex items-center gap-2">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleToggleActive(activation.id, activation.is_active)}
+                            >
+                              {activation.is_active ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleCopyLink(activation.activation_code)}
+                            >
+                              <Copy className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="text-destructive"
+                              onClick={() => handleDeleteActivation(activation.id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-4">
+                          <div className="flex items-center gap-2">
+                            <Globe className={`h-4 w-4 ${activation.web_enabled !== false ? 'text-green-500' : 'text-gray-400'}`} />
+                            <Switch
+                              checked={activation.web_enabled !== false}
+                              onCheckedChange={() => handleTogglePort(activation.id, 'web', activation.web_enabled !== false)}
+                            />
+                            <span className="text-xs">Web</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Smartphone className={`h-4 w-4 ${activation.app_enabled !== false ? 'text-green-500' : 'text-gray-400'}`} />
+                            <Switch
+                              checked={activation.app_enabled !== false}
+                              onCheckedChange={() => handleTogglePort(activation.id, 'app', activation.app_enabled !== false)}
+                            />
+                            <span className="text-xs">App</span>
+                          </div>
+                          {!activation.is_authorized && (
+                            <Button size="sm" variant="outline" onClick={() => handleAuthorize(activation.id)}>
+                              <CheckCircle className="h-4 w-4 mr-1" />
+                              授权
+                            </Button>
+                          )}
+                          <div className="flex items-center gap-2">
+                            <Calendar className="h-4 w-4" />
+                            <Input
+                              type="date"
+                              className="w-40 h-8"
+                              defaultValue={activation.expire_at ? activation.expire_at.split('T')[0] : ''}
+                              onChange={(e) => handleExtendDate(activation.id, e.target.value)}
+                            />
+                          </div>
+                        </div>
+
+                        {bindingBotId === activation.id ? (
+                          <div className="flex items-center gap-2">
+                            <Input
+                              value={activationCode}
+                              onChange={(e) => setActivationCode(e.target.value)}
+                              placeholder="输入激活码"
+                              className="flex-1"
+                            />
+                            <Button
+                              size="sm"
+                              onClick={() => handleBindCode(activation.id)}
+                              disabled={isBinding}
+                            >
+                              {isBinding ? "绑定中..." : "绑定"}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => {
+                                setBindingBotId(null);
+                                setActivationCode("");
+                              }}
+                            >
+                              取消
+                            </Button>
+                          </div>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setBindingBotId(activation.id)}
+                          >
+                            <Key className="h-4 w-4 mr-1" />
+                            绑定激活码
+                          </Button>
+                        )}
+                      </div>
+                    </Card>
+                  ))}
                 </div>
               </ScrollArea>
             </Card>
           </TabsContent>
 
+          {/* 聊天监控 */}
           <TabsContent value="monitor" className="space-y-4">
-            <Card className="p-6">
-              <h2 className="text-xl font-semibold mb-4">聊天监控</h2>
-              <div className="grid md:grid-cols-3 gap-4 h-[600px]">
-                {/* 聊天列表 */}
-                <div className="border rounded-lg">
-                  <div className="p-3 border-b font-medium">聊天列表</div>
-                  <ScrollArea className="h-[540px]">
-                    <div className="p-2 space-y-2">
-                      {getUniqueChats().map((chat) => {
-                        const bot = activations.find(a => a.id === chat.botId);
-                        const isSelected = selectedBotId === chat.botId && selectedChatId === chat.chatId;
-                        
-                        return (
-                          <div
-                            key={`${chat.botId}-${chat.chatId}`}
-                            className={`p-3 rounded-lg cursor-pointer transition-colors ${
-                              isSelected ? 'bg-primary/20' : 'hover:bg-muted'
-                            }`}
-                            onClick={() => {
-                              setSelectedBotId(chat.botId);
-                              setSelectedChatId(chat.chatId);
-                            }}
-                          >
-                            <div className="font-medium text-sm truncate">{chat.userName}</div>
-                            <div className="text-xs text-muted-foreground truncate">
-                              Bot: {bot?.bot_token.substring(0, 10)}...
-                            </div>
-                            {bot?.user_email && (
-                              <div className="text-xs text-blue-600 dark:text-blue-400 truncate">
-                                用户: {bot.user_email}
-                              </div>
-                            )}
-                            {bot?.user_id && !bot?.user_email && (
-                              <div className="text-xs text-blue-600 dark:text-blue-400 truncate">
-                                用户ID: {bot.user_id.substring(0, 8)}...
-                              </div>
-                            )}
-                            <div className="text-xs text-muted-foreground truncate mt-1">
-                              {chat.lastMessage.content.substring(0, 30)}...
-                            </div>
+            <div className="grid md:grid-cols-3 gap-4 h-[600px]">
+              {/* 聊天列表 */}
+              <Card className="p-4">
+                <h3 className="font-semibold mb-3">聊天列表</h3>
+                <ScrollArea className="h-[530px]">
+                  <div className="space-y-2">
+                    {getUniqueChats().map(chat => {
+                      const bot = activations.find(a => a.id === chat.botId);
+                      return (
+                        <div
+                          key={`${chat.botId}-${chat.chatId}`}
+                          className={`p-3 rounded-lg cursor-pointer transition-colors ${
+                            selectedBotId === chat.botId && selectedChatId === chat.chatId
+                              ? 'bg-primary/20'
+                              : 'hover:bg-muted'
+                          }`}
+                          onClick={() => {
+                            setSelectedBotId(chat.botId);
+                            setSelectedChatId(chat.chatId);
+                          }}
+                        >
+                          <div className="font-medium">{chat.userName}</div>
+                          <div className="text-xs text-muted-foreground truncate">
+                            {chat.lastMessage.content}
                           </div>
-                        );
-                      })}
-                    </div>
-                  </ScrollArea>
-                </div>
-
-                {/* 消息区域 */}
-                <div className="md:col-span-2 border rounded-lg flex flex-col h-[540px]">
-                  <div className="p-3 border-b font-medium shrink-0">
-                    {selectedChatId ? `对话 - ChatID: ${selectedChatId}` : '选择一个聊天'}
+                          <div className="text-xs text-muted-foreground mt-1">
+                            机器人: {bot?.bot_token.substring(0, 10)}...
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                  <ScrollArea className="flex-1 p-4 overflow-hidden">
-                    <div className="space-y-3">
-                      {getSelectedChatMessages().map((msg) => {
-                        // 检测是否为图片消息
-                        const isImageMessage = msg.content.startsWith('[图片]');
-                        const imageMatch = msg.content.match(/\[图片\]\s*(https?:\/\/[^\s]+)/);
-                        const imageUrl = imageMatch ? imageMatch[1] : null;
-                        const isExpiredImage = msg.content.includes('[图片](已过期)');
-                        
-                        // 构建图片代理URL
-                        const getProxyImageUrl = (url: string) => {
-                          const bot = activations.find(a => a.id === msg.bot_activation_id);
-                          if (!bot) return url;
-                          return `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-telegram-image?url=${encodeURIComponent(url)}&botId=${bot.id}`;
-                        };
-                        
-                        return (
+                </ScrollArea>
+              </Card>
+
+              {/* 消息窗口 */}
+              <Card className="p-4 md:col-span-2">
+                <h3 className="font-semibold mb-3">消息记录</h3>
+                {selectedBotId && selectedChatId ? (
+                  <>
+                    <ScrollArea className="h-[450px] mb-3">
+                      <div className="space-y-3">
+                        {getSelectedChatMessages().map(msg => (
                           <div
                             key={msg.id}
-                            className={`flex ${msg.direction === 'outgoing' ? 'justify-end' : 'justify-start'}`}
+                            className={`p-3 rounded-lg max-w-[80%] ${
+                              msg.direction === 'incoming'
+                                ? 'bg-muted'
+                                : 'bg-primary/20 ml-auto'
+                            }`}
                           >
-                            <div
-                              className={`max-w-[70%] p-3 rounded-lg ${
-                                msg.direction === 'outgoing'
-                                  ? 'bg-primary text-primary-foreground'
-                                  : 'bg-muted'
-                              }`}
-                            >
-                              <div className="text-xs opacity-70 mb-1">
-                                {msg.telegram_user_name} · {new Date(msg.created_at).toLocaleString('zh-CN')}
-                              </div>
-                                {isImageMessage && imageUrl && !isExpiredImage ? (
-                                <div className="space-y-2">
-                                  <div className="flex items-center gap-1 text-xs opacity-70">
-                                    <ImageIcon className="h-3 w-3" />
-                                    图片消息
-                                  </div>
-                                  <div className="relative group">
-                                    <img 
-                                      src={getProxyImageUrl(imageUrl)} 
-                                      alt="图片消息" 
-                                      className="max-w-full rounded cursor-pointer hover:opacity-90 transition-opacity"
-                                      style={{ maxHeight: '200px' }}
-                                      onClick={() => setPreviewImage(getProxyImageUrl(imageUrl))}
-                                    />
-                                    <div 
-                                      className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity rounded cursor-pointer"
-                                      onClick={() => setPreviewImage(getProxyImageUrl(imageUrl))}
-                                    >
-                                      <ZoomIn className="h-8 w-8 text-white" />
-                                    </div>
-                                  </div>
-                                </div>
-                              ) : isExpiredImage ? (
-                                <div className="flex items-center gap-2 text-sm opacity-70">
+                            {msg.content.startsWith('[图片]') ? (
+                              <div 
+                                className="cursor-pointer"
+                                onClick={() => {
+                                  const url = msg.content.match(/\((.*?)\)/)?.[1];
+                                  if (url && !url.includes('已过期')) {
+                                    setPreviewImage(url);
+                                  }
+                                }}
+                              >
+                                <div className="flex items-center gap-2 text-muted-foreground">
                                   <ImageIcon className="h-4 w-4" />
-                                  <span>[图片已过期]</span>
+                                  <span>图片消息</span>
+                                  <ZoomIn className="h-4 w-4" />
                                 </div>
-                              ) : (
-                                <div className="text-sm whitespace-pre-wrap break-words">{msg.content}</div>
-                              )}
+                              </div>
+                            ) : (
+                              <div className="whitespace-pre-wrap">{msg.content}</div>
+                            )}
+                            <div className="text-xs text-muted-foreground mt-1">
+                              {new Date(msg.created_at).toLocaleString()}
                             </div>
                           </div>
-                        );
-                      })}
-                      <div ref={messagesEndRef} />
-                    </div>
-                  </ScrollArea>
-                  
-                  {/* 回复输入 */}
-                  {selectedChatId && (
-                    <div className="p-3 border-t flex gap-2">
+                        ))}
+                        <div ref={messagesEndRef} />
+                      </div>
+                    </ScrollArea>
+                    <div className="flex gap-2">
                       <Input
-                        placeholder="输入回复消息..."
                         value={replyMessage}
                         onChange={(e) => setReplyMessage(e.target.value)}
-                        onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleAdminReply()}
+                        placeholder="输入回复消息..."
+                        onKeyPress={(e) => e.key === 'Enter' && handleAdminReply()}
                       />
-                      <Button onClick={handleAdminReply} disabled={isSending || !replyMessage.trim()}>
+                      <Button onClick={handleAdminReply} disabled={isSending}>
                         <Send className="h-4 w-4" />
                       </Button>
                     </div>
-                  )}
-                </div>
-              </div>
-            </Card>
+                  </>
+                ) : (
+                  <div className="h-[500px] flex items-center justify-center text-muted-foreground">
+                    选择一个聊天查看消息
+                  </div>
+                )}
+              </Card>
+            </div>
           </TabsContent>
         </Tabs>
-      </div>
 
-      {/* 激活码生成对话框 */}
-      <Dialog open={showCodeGenerator} onOpenChange={setShowCodeGenerator}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>批量生成激活码</DialogTitle>
-            <DialogDescription>
-              生成的激活码可供用户绑定机器人使用
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label>生成数量</Label>
-              <Input
-                type="number"
-                min="1"
-                max="100"
-                placeholder="输入数量 (1-100)"
-                value={codeCount}
-                onChange={(e) => setCodeCount(e.target.value)}
-                className="mt-2"
-              />
-            </div>
-            <div>
-              <Label>有效期至</Label>
-              <Input
-                type="date"
-                value={codeExpiryDate}
-                onChange={(e) => setCodeExpiryDate(e.target.value)}
-                className="mt-2"
-              />
-            </div>
-            <Button 
-              onClick={handleGenerateCodes} 
-              className="w-full"
-              disabled={isGenerating}
-            >
-              {isGenerating ? '生成中...' : '生成激活码'}
-            </Button>
-            
-            {generatedCodes.length > 0 && (
-              <div className="mt-4 p-4 bg-muted rounded-lg">
-                <div className="flex justify-between items-center mb-2">
-                  <span className="font-medium">已生成的激活码:</span>
-                  <Button size="sm" variant="outline" onClick={handleCopyAllCodes}>
-                    <Copy className="h-4 w-4 mr-1" />
-                    复制全部
-                  </Button>
-                </div>
-                <div className="max-h-40 overflow-y-auto space-y-1">
-                  {generatedCodes.map((code, index) => (
-                    <div key={index} className="text-sm font-mono bg-background p-1 rounded">
-                      {code}
-                    </div>
-                  ))}
-                </div>
+        {/* 生成激活码对话框 */}
+        <Dialog open={showCodeGenerator} onOpenChange={setShowCodeGenerator}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>批量生成激活码</DialogTitle>
+              <DialogDescription>
+                生成的激活码将保存到数据库，可在激活码列表中查看
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <Label>生成数量</Label>
+                <Input
+                  type="number"
+                  value={codeCount}
+                  onChange={(e) => setCodeCount(e.target.value)}
+                  min="1"
+                  max="100"
+                  className="mt-2"
+                />
               </div>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* 激活码列表对话框 */}
-      <Dialog open={showCodeList} onOpenChange={setShowCodeList}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>激活码列表</DialogTitle>
-            <DialogDescription>
-              查看所有激活码的使用状态
-            </DialogDescription>
-          </DialogHeader>
-          <ScrollArea className="h-[400px]">
-            <div className="space-y-2">
-              {allCodes.length === 0 ? (
-                <p className="text-center text-muted-foreground py-8">暂无激活码</p>
-              ) : (
-                allCodes.map((code) => {
-                  const status = getCodeStatus(code);
-                  const isExpired = code.expire_at && new Date(code.expire_at) < new Date();
-                  
-                  return (
-                    <div 
-                      key={code.id} 
-                      className={`flex items-center justify-between p-3 border rounded-lg ${isExpired ? 'opacity-50' : ''}`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <span className="font-mono text-sm">{code.code}</span>
-                        <Badge className={status.color}>{status.text}</Badge>
-                        {isExpired && (
-                          <Badge variant="destructive">已过期</Badge>
-                        )}
+              <div>
+                <Label>有效期</Label>
+                <Input
+                  type="date"
+                  value={codeExpiryDate}
+                  onChange={(e) => setCodeExpiryDate(e.target.value)}
+                  className="mt-2"
+                />
+              </div>
+              <Button onClick={handleGenerateCodes} disabled={isGenerating} className="w-full">
+                {isGenerating ? "生成中..." : "生成激活码"}
+              </Button>
+              {generatedCodes.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm font-medium">已生成的激活码</span>
+                    <Button size="sm" variant="outline" onClick={handleCopyAllCodes}>
+                      <Copy className="h-4 w-4 mr-1" />
+                      复制全部
+                    </Button>
+                  </div>
+                  <ScrollArea className="h-[200px] border rounded-lg p-2">
+                    {generatedCodes.map((code, index) => (
+                      <div key={index} className="font-mono text-sm py-1">
+                        {code}
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-muted-foreground">
-                          {code.expire_at ? `有效期至: ${new Date(code.expire_at).toLocaleDateString('zh-CN')}` : '永久有效'}
-                        </span>
-                        <Button 
-                          size="sm" 
-                          variant="ghost"
-                          onClick={() => handleCopyCode(code.code)}
-                        >
-                          <Copy className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    </div>
-                  );
-                })
+                    ))}
+                  </ScrollArea>
+                </div>
               )}
             </div>
-          </ScrollArea>
-        </DialogContent>
-      </Dialog>
+          </DialogContent>
+        </Dialog>
 
-      {/* 图片预览对话框 */}
-      <Dialog open={!!previewImage} onOpenChange={(open) => !open && setPreviewImage(null)}>
-        <DialogContent className="max-w-4xl max-h-[90vh] p-0 overflow-hidden bg-black/90">
-          <DialogHeader className="absolute top-2 right-2 z-10">
-            <Button
-              size="icon"
-              variant="ghost"
-              className="h-8 w-8 text-white hover:bg-white/20"
-              onClick={() => setPreviewImage(null)}
-            >
-              <X className="h-5 w-5" />
-            </Button>
-          </DialogHeader>
-          <div className="flex items-center justify-center p-4">
+        {/* 激活码列表对话框 */}
+        <Dialog open={showCodeList} onOpenChange={setShowCodeList}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>激活码列表</DialogTitle>
+              <DialogDescription>
+                查看所有生成的激活码及其使用状态
+              </DialogDescription>
+            </DialogHeader>
+            <ScrollArea className="h-[400px]">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>激活码</TableHead>
+                    <TableHead>状态</TableHead>
+                    <TableHead>有效期</TableHead>
+                    <TableHead>创建时间</TableHead>
+                    <TableHead>操作</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {allCodes.map(code => {
+                    const status = getCodeStatus(code);
+                    return (
+                      <TableRow key={code.id}>
+                        <TableCell className="font-mono">{code.code}</TableCell>
+                        <TableCell>
+                          <Badge className={status.color}>{status.text}</Badge>
+                        </TableCell>
+                        <TableCell>
+                          {code.expire_at ? new Date(code.expire_at).toLocaleDateString() : '-'}
+                        </TableCell>
+                        <TableCell>
+                          {new Date(code.created_at).toLocaleDateString()}
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleCopyCode(code.code)}
+                          >
+                            <Copy className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </ScrollArea>
+          </DialogContent>
+        </Dialog>
+
+        {/* 图片预览对话框 */}
+        <Dialog open={!!previewImage} onOpenChange={() => setPreviewImage(null)}>
+          <DialogContent className="max-w-4xl">
+            <DialogHeader>
+              <DialogTitle>图片预览</DialogTitle>
+            </DialogHeader>
             {previewImage && (
-              <img 
-                src={previewImage} 
-                alt="预览图片" 
-                className="max-w-full max-h-[85vh] object-contain rounded"
-              />
+              <div className="flex justify-center">
+                <img 
+                  src={previewImage} 
+                  alt="预览图片" 
+                  className="max-w-full max-h-[70vh] object-contain"
+                />
+              </div>
             )}
-          </div>
-        </DialogContent>
-      </Dialog>
+          </DialogContent>
+        </Dialog>
+      </div>
     </div>
   );
 };
-
-export default Admin;
