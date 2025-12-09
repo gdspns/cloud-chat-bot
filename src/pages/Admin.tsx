@@ -144,26 +144,30 @@ export const Admin = () => {
   }, [user, authLoading]);
 
   useEffect(() => {
-    if (isAdmin) {
+    // 确保 session 存在再调用 API
+    if (isAdmin && session) {
       loadActivations();
       loadAllCodes();
       loadAllMessages();
       loadDisabledUsers();
       const interval = setInterval(() => {
-        loadActivations();
-        loadAllCodes();
-        loadAllMessages();
-        loadDisabledUsers();
+        if (session) {
+          loadActivations();
+          loadAllCodes();
+          loadAllMessages();
+          loadDisabledUsers();
+        }
       }, 10000);
       return () => clearInterval(interval);
     }
-  }, [isAdmin]);
+  }, [isAdmin, session]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [allMessages, selectedChatId]);
 
   const loadActivations = async () => {
+    if (!session) return;
     try {
       const { data, error } = await supabase.functions.invoke('manage-bot', {
         body: { action: 'list' }
@@ -179,6 +183,7 @@ export const Admin = () => {
   };
 
   const loadAllCodes = async () => {
+    if (!session) return;
     try {
       const { data, error } = await supabase.functions.invoke('manage-bot', {
         body: { action: 'list-codes' }
@@ -194,6 +199,7 @@ export const Admin = () => {
   };
 
   const loadAllMessages = async () => {
+    if (!session) return;
     try {
       const { data, error } = await supabase.functions.invoke('manage-bot', {
         body: { action: 'list-all-messages' }
@@ -209,6 +215,7 @@ export const Admin = () => {
   };
 
   const loadDisabledUsers = async () => {
+    if (!session) return;
     try {
       const { data, error } = await supabase.functions.invoke('manage-bot', {
         body: { action: 'list-disabled-users' }
