@@ -3,7 +3,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { Trash2, Play, Pause, Calendar, Copy, CheckCircle, XCircle, Key, Globe, Smartphone, List, MessageSquare, Send } from "lucide-react";
+import { Trash2, Play, Pause, Calendar, Copy, CheckCircle, XCircle, Key, Globe, Smartphone, List, MessageSquare, Send, LayoutDashboard, Users, Bot, Image as ImageIcon } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -11,6 +11,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 interface BotActivation {
   id: string;
@@ -622,14 +623,153 @@ export const Admin = () => {
           </div>
         </div>
 
-        <Tabs defaultValue="bots" className="space-y-4">
+        <Tabs defaultValue="dashboard" className="space-y-4">
           <TabsList>
-            <TabsTrigger value="bots">机器人管理</TabsTrigger>
+            <TabsTrigger value="dashboard">
+              <LayoutDashboard className="h-4 w-4 mr-2" />
+              仪表盘
+            </TabsTrigger>
+            <TabsTrigger value="bots">
+              <Bot className="h-4 w-4 mr-2" />
+              机器人管理
+            </TabsTrigger>
             <TabsTrigger value="monitor">
               <MessageSquare className="h-4 w-4 mr-2" />
               聊天监控
             </TabsTrigger>
           </TabsList>
+
+          {/* 仪表盘 */}
+          <TabsContent value="dashboard" className="space-y-4">
+            <div className="grid md:grid-cols-3 gap-4">
+              <Card className="p-6">
+                <div className="flex items-center gap-3">
+                  <div className="p-3 bg-blue-500/20 rounded-lg">
+                    <Users className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold">{new Set(activations.filter(a => a.user_id).map(a => a.user_id)).size}</div>
+                    <div className="text-sm text-muted-foreground">注册用户</div>
+                  </div>
+                </div>
+              </Card>
+              <Card className="p-6">
+                <div className="flex items-center gap-3">
+                  <div className="p-3 bg-green-500/20 rounded-lg">
+                    <Bot className="h-6 w-6 text-green-600 dark:text-green-400" />
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold">{realBots.length}</div>
+                    <div className="text-sm text-muted-foreground">机器人总数</div>
+                  </div>
+                </div>
+              </Card>
+              <Card className="p-6">
+                <div className="flex items-center gap-3">
+                  <div className="p-3 bg-purple-500/20 rounded-lg">
+                    <MessageSquare className="h-6 w-6 text-purple-600 dark:text-purple-400" />
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold">{allMessages.length}</div>
+                    <div className="text-sm text-muted-foreground">消息总数</div>
+                  </div>
+                </div>
+              </Card>
+            </div>
+
+            {/* 用户列表 */}
+            <Card className="p-6">
+              <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                <Users className="h-5 w-5" />
+                用户列表
+              </h2>
+              <ScrollArea className="h-[300px]">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>用户邮箱</TableHead>
+                      <TableHead>用户ID</TableHead>
+                      <TableHead>机器人数量</TableHead>
+                      <TableHead>状态</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {(() => {
+                      const userMap = new Map<string, { email?: string; botCount: number; authorizedCount: number }>();
+                      realBots.forEach(bot => {
+                        if (bot.user_id) {
+                          const existing = userMap.get(bot.user_id) || { email: bot.user_email, botCount: 0, authorizedCount: 0 };
+                          existing.botCount++;
+                          if (bot.is_authorized) existing.authorizedCount++;
+                          if (bot.user_email) existing.email = bot.user_email;
+                          userMap.set(bot.user_id, existing);
+                        }
+                      });
+                      return Array.from(userMap.entries()).map(([userId, info]) => (
+                        <TableRow key={userId}>
+                          <TableCell>{info.email || '-'}</TableCell>
+                          <TableCell className="font-mono text-xs">{userId.substring(0, 8)}...</TableCell>
+                          <TableCell>{info.botCount}</TableCell>
+                          <TableCell>
+                            <Badge className={info.authorizedCount > 0 ? 'bg-green-500/20 text-green-700' : 'bg-yellow-500/20 text-yellow-700'}>
+                              {info.authorizedCount > 0 ? `${info.authorizedCount}个已激活` : '试用中'}
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      ));
+                    })()}
+                  </TableBody>
+                </Table>
+              </ScrollArea>
+            </Card>
+
+            {/* 机器人列表概览 */}
+            <Card className="p-6">
+              <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                <Bot className="h-5 w-5" />
+                机器人列表
+              </h2>
+              <ScrollArea className="h-[300px]">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>机器人令牌</TableHead>
+                      <TableHead>所属用户</TableHead>
+                      <TableHead>状态</TableHead>
+                      <TableHead>消息数</TableHead>
+                      <TableHead>过期日期</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {realBots.map(bot => {
+                      const isExpired = bot.expire_at && new Date(bot.expire_at) < new Date();
+                      return (
+                        <TableRow key={bot.id}>
+                          <TableCell className="font-mono text-xs">{bot.bot_token.substring(0, 15)}...</TableCell>
+                          <TableCell>{bot.user_email || (bot.user_id ? `${bot.user_id.substring(0, 8)}...` : '未绑定')}</TableCell>
+                          <TableCell>
+                            <div className="flex gap-1 flex-wrap">
+                              <Badge className={bot.is_active && !isExpired ? 'bg-green-500/20 text-green-700' : 'bg-gray-500/20 text-gray-500'}>
+                                {bot.is_active && !isExpired ? '运行中' : '已停止'}
+                              </Badge>
+                              {bot.is_authorized ? (
+                                <Badge className="bg-blue-500/20 text-blue-700">已激活</Badge>
+                              ) : (
+                                <Badge className="bg-yellow-500/20 text-yellow-700">试用</Badge>
+                              )}
+                              {isExpired && <Badge variant="destructive">已过期</Badge>}
+                            </div>
+                          </TableCell>
+                          <TableCell>{bot.trial_messages_used}/{bot.trial_limit}</TableCell>
+                          <TableCell>{bot.expire_at ? new Date(bot.expire_at).toLocaleDateString('zh-CN') : '-'}</TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </ScrollArea>
+            </Card>
+          </TabsContent>
 
           <TabsContent value="bots" className="space-y-4">
             <Card className="p-6">
@@ -940,25 +1080,61 @@ export const Admin = () => {
                   </div>
                   <ScrollArea className="flex-1 p-4">
                     <div className="space-y-3">
-                      {getSelectedChatMessages().map((msg) => (
-                        <div
-                          key={msg.id}
-                          className={`flex ${msg.direction === 'outgoing' ? 'justify-end' : 'justify-start'}`}
-                        >
+                      {getSelectedChatMessages().map((msg) => {
+                        // 检测是否为图片消息
+                        const isImageMessage = msg.content.startsWith('[图片]');
+                        const imageMatch = msg.content.match(/\[图片\]\s*(https?:\/\/[^\s]+)/);
+                        const imageUrl = imageMatch ? imageMatch[1] : null;
+                        const isExpiredImage = msg.content.includes('[图片](已过期)');
+                        
+                        // 构建图片代理URL
+                        const getProxyImageUrl = (url: string) => {
+                          const bot = activations.find(a => a.id === msg.bot_activation_id);
+                          if (!bot) return url;
+                          return `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-telegram-image?file_url=${encodeURIComponent(url)}&bot_token=${encodeURIComponent(bot.bot_token)}`;
+                        };
+                        
+                        return (
                           <div
-                            className={`max-w-[70%] p-3 rounded-lg ${
-                              msg.direction === 'outgoing'
-                                ? 'bg-primary text-primary-foreground'
-                                : 'bg-muted'
-                            }`}
+                            key={msg.id}
+                            className={`flex ${msg.direction === 'outgoing' ? 'justify-end' : 'justify-start'}`}
                           >
-                            <div className="text-xs opacity-70 mb-1">
-                              {msg.telegram_user_name} · {new Date(msg.created_at).toLocaleString('zh-CN')}
+                            <div
+                              className={`max-w-[70%] p-3 rounded-lg ${
+                                msg.direction === 'outgoing'
+                                  ? 'bg-primary text-primary-foreground'
+                                  : 'bg-muted'
+                              }`}
+                            >
+                              <div className="text-xs opacity-70 mb-1">
+                                {msg.telegram_user_name} · {new Date(msg.created_at).toLocaleString('zh-CN')}
+                              </div>
+                              {isImageMessage && imageUrl && !isExpiredImage ? (
+                                <div className="space-y-2">
+                                  <div className="flex items-center gap-1 text-xs opacity-70">
+                                    <ImageIcon className="h-3 w-3" />
+                                    图片消息
+                                  </div>
+                                  <img 
+                                    src={getProxyImageUrl(imageUrl)} 
+                                    alt="图片消息" 
+                                    className="max-w-full rounded cursor-pointer hover:opacity-90 transition-opacity"
+                                    style={{ maxHeight: '300px' }}
+                                    onClick={() => window.open(getProxyImageUrl(imageUrl), '_blank')}
+                                  />
+                                </div>
+                              ) : isExpiredImage ? (
+                                <div className="flex items-center gap-2 text-sm opacity-70">
+                                  <ImageIcon className="h-4 w-4" />
+                                  <span>[图片已过期]</span>
+                                </div>
+                              ) : (
+                                <div className="text-sm whitespace-pre-wrap break-words">{msg.content}</div>
+                              )}
                             </div>
-                            <div className="text-sm whitespace-pre-wrap break-words">{msg.content}</div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                       <div ref={messagesEndRef} />
                     </div>
                   </ScrollArea>
