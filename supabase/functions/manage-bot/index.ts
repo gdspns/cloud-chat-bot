@@ -759,13 +759,17 @@ serve(async (req) => {
           });
         }
 
-        // Store message
+        // Store message - 如果 web 端口关闭，设置 is_read 为 null，这样用户重新打开时不会看到
+        const isReadValue = activation.web_enabled ? true : null;
+        
         await supabase.from('messages').insert({
           bot_activation_id: botActivationId,
           telegram_chat_id: chatId,
           telegram_user_name: '管理员',
           content: message,
           direction: 'outgoing',
+          is_admin_reply: true,
+          is_read: isReadValue,
         });
 
         return new Response(JSON.stringify({ ok: true }), {

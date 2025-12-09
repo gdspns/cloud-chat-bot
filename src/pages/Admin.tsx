@@ -1279,7 +1279,7 @@ export const Admin = () => {
                         const getProxyImageUrl = (url: string) => {
                           const bot = activations.find(a => a.id === msg.bot_activation_id);
                           if (!bot) return url;
-                          return `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-telegram-image?file_url=${encodeURIComponent(url)}&bot_token=${encodeURIComponent(bot.bot_token)}`;
+                          return `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-telegram-image?url=${encodeURIComponent(url)}&botId=${bot.id}`;
                         };
                         
                         return (
