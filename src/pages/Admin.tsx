@@ -164,19 +164,31 @@ export const Admin = () => {
     
     loadDataWithValidSession();
     
-    const interval = setInterval(() => {
+    const interval = setInterval(async () => {
       if (session && isAdmin) {
+        // 定时刷新前先验证会话有效性
+        const { data: { session: currentSession } } = await supabase.auth.getSession();
+        if (!currentSession) {
+          console.log('会话无效，跳过本次刷新');
+          return;
+        }
         loadActivations();
         loadAllCodes();
         loadAllMessages();
         loadDisabledUsers();
       }
-    }, 10000);
+    }, 30000); // 延长刷新间隔到30秒，减少API调用频率
     return () => clearInterval(interval);
   }, [isAdmin, session]);
 
+  // 只滚动消息容器内部，不滚动整个页面
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (messagesEndRef.current) {
+      const container = messagesEndRef.current.parentElement;
+      if (container) {
+        container.scrollTop = container.scrollHeight;
+      }
+    }
   }, [allMessages, selectedChatId]);
 
   const handleSessionExpired = async () => {
