@@ -68,9 +68,23 @@ const Index = () => {
           if (!mounted) return;
           // 检查用户是否被禁用
           await checkUserDisabled(session.user.id);
-          // 同步游客机器人到用户账户
-          await syncGuestBotsToUser(session.user);
-          loadBots(session.user);
+          // 同步游客机器人到用户账户，获取同步的机器人
+          const syncedBots = await syncGuestBotsToUser(session.user);
+          // 加载用户的所有机器人
+          const { data, error } = await (supabase
+            .from('bot_activations')
+            .select('*') as any)
+            .eq('user_id', session.user.id)
+            .order('created_at', { ascending: false });
+          
+          if (!error && data) {
+            // 合并同步的机器人和已有机器人，去重
+            const allBots = data as BotActivation[];
+            setBots(allBots);
+          } else if (syncedBots.length > 0) {
+            // 如果加载失败但有同步的机器人，至少显示同步的
+            setBots(syncedBots);
+          }
         }, 0);
       }
     });
@@ -154,24 +168,33 @@ const Index = () => {
   };
 
   // 同步游客机器人到用户账户
-  const syncGuestBotsToUser = async (currentUser: User) => {
+  const syncGuestBotsToUser = async (currentUser: User): Promise<BotActivation[]> => {
     const guestBotIds = localStorage.getItem('guestBotIds');
-    if (!guestBotIds) return;
+    if (!guestBotIds) return [];
     
     const ids = JSON.parse(guestBotIds);
-    if (ids.length === 0) return;
+    if (ids.length === 0) return [];
     
     try {
       // 将游客机器人绑定到用户
-      await (supabase
+      const { data, error } = await (supabase
         .from('bot_activations') as any)
         .update({ user_id: currentUser.id })
         .in('id', ids)
-        .is('user_id', null);
+        .is('user_id', null)
+        .select('*');
       
       localStorage.removeItem('guestBotIds');
+      
+      if (error) {
+        console.error('同步游客机器人失败:', error);
+        return [];
+      }
+      
+      return (data || []) as BotActivation[];
     } catch (error) {
       console.error('同步游客机器人失败:', error);
+      return [];
     }
   };
 
