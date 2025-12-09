@@ -924,7 +924,8 @@ serve(async (req) => {
         }
 
         // 保存消息记录
-        // 如果web端口关闭，则标记消息为隐藏（is_read: null）
+        // 管理员发送的消息始终可见（is_read: false），不受web端口限制
+        // 这样管理员聊天监控始终能看到自己发送的消息
         await supabase
           .from('messages')
           .insert({
@@ -934,7 +935,7 @@ serve(async (req) => {
             content: message,
             direction: 'outgoing',
             is_admin_reply: true,
-            is_read: bot.web_enabled === false ? null : false,
+            is_read: false, // 管理员消息始终可见
           });
 
         return new Response(JSON.stringify({ ok: true }), {
