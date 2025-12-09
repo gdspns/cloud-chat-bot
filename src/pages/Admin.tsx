@@ -1215,9 +1215,9 @@ export const Admin = () => {
                                 const urlMatch = msg.content.match(/\[图片\]\s*(?:\((.+?)\)|(.+))$/);
                                 const imageUrl = urlMatch?.[1] || urlMatch?.[2]?.trim();
                                 const isExpired = !imageUrl || imageUrl.includes('已过期');
-                                const bot = activations.find(a => a.id === msg.bot_activation_id);
-                                const proxyUrl = imageUrl && !isExpired && bot
-                                  ? `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-telegram-image?url=${encodeURIComponent(imageUrl)}&botId=${bot.id}`
+                                // 直接使用消息中的bot_activation_id，不依赖于activations列表
+                                const proxyUrl = imageUrl && !isExpired && msg.bot_activation_id
+                                  ? `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-telegram-image?url=${encodeURIComponent(imageUrl)}&botId=${msg.bot_activation_id}`
                                   : null;
                                 
                                 return (
