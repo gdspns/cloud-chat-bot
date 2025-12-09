@@ -5,6 +5,7 @@ import { ChatWindow } from "@/components/ChatWindow";
 import { AddBotDialog } from "@/components/AddBotDialog";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { User } from "@supabase/supabase-js";
 
 interface Message {
   id: string;
@@ -13,22 +14,24 @@ interface Message {
   telegram_user_name: string;
   content: string;
   direction: string;
-  is_read: boolean;
+  is_read: boolean | null;
   created_at: string;
+  is_admin_reply?: boolean;
 }
 
 interface BotActivation {
   id: string;
   bot_token: string;
   personal_user_id: string;
-  greeting_message: string;
-  is_active: boolean;
-  is_authorized: boolean;
-  trial_messages_used: number;
-  trial_limit: number;
-  expire_at: string | null;
+  greeting_message?: string;
+  is_active?: boolean;
+  is_authorized?: boolean;
+  trial_messages_used?: number;
+  trial_limit?: number;
+  expire_at?: string | null;
   web_enabled?: boolean;
   app_enabled?: boolean;
+  user_id?: string | null;
 }
 
 interface ChatItem {
@@ -42,6 +45,7 @@ interface ChatItem {
 
 const Index = () => {
   const { toast } = useToast();
+  const [user, setUser] = useState<User | null>(null);
   const [bots, setBots] = useState<BotActivation[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [selectedBotId, setSelectedBotId] = useState<string | null>(null);
@@ -50,6 +54,28 @@ const Index = () => {
   const [unreadChats, setUnreadChats] = useState<Set<number>>(new Set());
   const [enableSound, setEnableSound] = useState(true);
   const [soundType, setSoundType] = useState("qq");
+  const [isLoading, setIsLoading] = useState(true);
+
+  // 检查用户登录状态
+  useEffect(() => {
+    const checkAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      setUser(session?.user ?? null);
+      setIsLoading(false);
+    };
+
+    checkAuth();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      setUser(session?.user ?? null);
+      if (event === 'SIGNED_IN' || event === 'SIGNED_OUT') {
+        // 用户登录/退出时重新加载机器人
+        loadBots(session?.user ?? null);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   // 播放提示音
   const playNotificationSound = useCallback(() => {
@@ -106,52 +132,98 @@ const Index = () => {
     }
   }, [enableSound, soundType]);
 
-  // 加载本地存储的机器人ID和状态
-  useEffect(() => {
-    const storedBotIds = localStorage.getItem('myBotIds');
-    const storedSelectedBotId = localStorage.getItem('selectedBotId');
-    const storedSelectedChatId = localStorage.getItem('selectedChatId');
-    
-    if (storedBotIds) {
-      loadBots(JSON.parse(storedBotIds));
-    }
-    if (storedSelectedBotId) {
-      setSelectedBotId(storedSelectedBotId);
-    }
-    if (storedSelectedChatId) {
-      setSelectedChatId(Number(storedSelectedChatId));
-    }
-  }, []);
-
   // 加载机器人列表
-  const loadBots = async (botIds?: string[]) => {
+  const loadBots = useCallback(async (currentUser: User | null = user) => {
     try {
-      let query = supabase.from('bot_activations').select('*');
-      
-      if (botIds && botIds.length > 0) {
-        query = query.in('id', botIds);
+      if (currentUser) {
+        // 已登录用户：只加载自己的机器人
+        const { data, error } = await supabase
+          .from('bot_activations')
+          .select('*')
+          .eq('user_id', currentUser.id)
+          .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        setBots(data as BotActivation[]);
+        
+        // 同步 localStorage 中的游客机器人到用户账户
+        const guestBotIds = localStorage.getItem('guestBotIds');
+        if (guestBotIds) {
+          const ids = JSON.parse(guestBotIds);
+          if (ids.length > 0) {
+            // 将游客机器人绑定到用户
+            await supabase
+              .from('bot_activations')
+              .update({ user_id: currentUser.id })
+              .in('id', ids)
+              .is('user_id', null);
+            
+            localStorage.removeItem('guestBotIds');
+            // 重新加载
+            const { data: newData } = await supabase
+              .from('bot_activations')
+              .select('*')
+              .eq('user_id', currentUser.id)
+              .order('created_at', { ascending: false });
+            if (newData) setBots(newData as BotActivation[]);
+          }
+        }
       } else {
-        // 如果没有存储的ID，则不显示任何机器人
-        setBots([]);
-        return;
-      }
-      
-      const { data, error } = await query;
-      if (error) throw error;
-      setBots(data as BotActivation[]);
-      
-      // 自动选中第一个机器人
-      if (data && data.length > 0 && !selectedBotId) {
-        setSelectedBotId(data[0].id);
+        // 未登录用户：从 localStorage 加载
+        const storedBotIds = localStorage.getItem('guestBotIds');
+        if (storedBotIds) {
+          const botIds = JSON.parse(storedBotIds);
+          if (botIds.length > 0) {
+            const { data, error } = await supabase
+              .from('bot_activations')
+              .select('*')
+              .in('id', botIds)
+              .order('created_at', { ascending: false });
+
+            if (!error && data) {
+              setBots(data as BotActivation[]);
+            }
+          } else {
+            setBots([]);
+          }
+        } else {
+          setBots([]);
+        }
       }
     } catch (error) {
       console.error('加载机器人失败:', error);
     }
-  };
+  }, [user]);
+
+  // 初始加载
+  useEffect(() => {
+    if (!isLoading) {
+      loadBots(user);
+    }
+  }, [isLoading, user, loadBots]);
+
+  // 恢复选中状态
+  useEffect(() => {
+    const storedSelectedBotId = localStorage.getItem('selectedBotId');
+    const storedSelectedChatId = localStorage.getItem('selectedChatId');
+    
+    if (storedSelectedBotId && bots.find(b => b.id === storedSelectedBotId)) {
+      setSelectedBotId(storedSelectedBotId);
+    } else if (bots.length > 0 && !selectedBotId) {
+      setSelectedBotId(bots[0].id);
+    }
+    
+    if (storedSelectedChatId) {
+      setSelectedChatId(Number(storedSelectedChatId));
+    }
+  }, [bots, selectedBotId]);
 
   // 加载消息
   useEffect(() => {
-    if (bots.length === 0) return;
+    if (bots.length === 0) {
+      setMessages([]);
+      return;
+    }
 
     const botIds = bots.map(b => b.id);
     
@@ -169,83 +241,122 @@ const Index = () => {
 
     loadMessages();
 
-    // 订阅实时消息
-    const channels = botIds.map(botId => {
-      return supabase
-        .channel(`messages-${botId}`)
-        .on(
-          'postgres_changes',
-          {
-            event: 'INSERT',
-            schema: 'public',
-            table: 'messages',
-            filter: `bot_activation_id=eq.${botId}`,
-          },
-          (payload) => {
-            const newMessage = payload.new as Message;
-            setMessages(prev => [...prev, newMessage]);
-            
-            if (newMessage.direction === 'incoming') {
-              playNotificationSound();
-              setUnreadChats(prev => {
-                const updated = new Set(prev);
-                updated.add(newMessage.telegram_chat_id);
-                return updated;
-              });
-            }
+    // 订阅实时消息和机器人状态更新
+    const messagesChannel = supabase
+      .channel('user-messages')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+        },
+        (payload) => {
+          const newMessage = payload.new as Message;
+          // 检查是否属于当前用户的机器人
+          if (!botIds.includes(newMessage.bot_activation_id)) return;
+          
+          // 获取机器人的 web_enabled 状态
+          const msgBot = bots.find(b => b.id === newMessage.bot_activation_id);
+          
+          // 如果 web 端口关闭，不显示消息也不播放提示音
+          if (msgBot && !msgBot.web_enabled) return;
+          
+          // 过滤掉 is_read 为 null 的消息（端口关闭期间的消息）
+          if (newMessage.is_read === null) return;
+          
+          // 过滤掉管理员回复（当两个端口都关闭时）
+          if (msgBot && !msgBot.web_enabled && !msgBot.app_enabled && newMessage.is_admin_reply) return;
+          
+          setMessages(prev => [...prev, newMessage]);
+          
+          if (newMessage.direction === 'incoming' && !newMessage.is_admin_reply) {
+            playNotificationSound();
+            setUnreadChats(prev => {
+              const updated = new Set(prev);
+              updated.add(newMessage.telegram_chat_id);
+              return updated;
+            });
           }
-        )
-        .subscribe();
-    });
+        }
+      )
+      .subscribe();
+
+    // 订阅机器人状态更新（端口切换等）
+    const botsChannel = supabase
+      .channel('user-bots')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'bot_activations',
+        },
+        (payload) => {
+          const updatedBot = payload.new as BotActivation;
+          // 检查是否属于当前用户
+          if (!botIds.includes(updatedBot.id)) return;
+          
+          setBots(prev => prev.map(b => b.id === updatedBot.id ? updatedBot : b));
+        }
+      )
+      .subscribe();
 
     return () => {
-      channels.forEach(channel => supabase.removeChannel(channel));
+      supabase.removeChannel(messagesChannel);
+      supabase.removeChannel(botsChannel);
     };
   }, [bots, playNotificationSound]);
 
   // 处理机器人添加
-  const handleBotAdded = async () => {
-    // 重新获取最新添加的机器人
-    const { data } = await supabase
-      .from('bot_activations')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(1);
-    
-    if (data && data.length > 0) {
-      const newBot = data[0];
-      const storedBotIds = JSON.parse(localStorage.getItem('myBotIds') || '[]');
+  const handleBotAdded = async (newBot: BotActivation) => {
+    // 如果用户未登录，保存到 localStorage
+    if (!user) {
+      const storedBotIds = JSON.parse(localStorage.getItem('guestBotIds') || '[]');
       if (!storedBotIds.includes(newBot.id)) {
         storedBotIds.push(newBot.id);
-        localStorage.setItem('myBotIds', JSON.stringify(storedBotIds));
+        localStorage.setItem('guestBotIds', JSON.stringify(storedBotIds));
       }
-      loadBots(storedBotIds);
-      setSelectedBotId(newBot.id);
     }
+    
+    // 直接添加到本地状态，避免刷新
+    setBots(prev => [newBot, ...prev.filter(b => b.id !== newBot.id)]);
+    setSelectedBotId(newBot.id);
+    setShowAddBot(false);
+    
+    toast({
+      title: "添加成功",
+      description: `机器人已添加，可免费试用 ${newBot.trial_limit} 条消息`,
+    });
   };
 
   // 删除机器人
   const handleDeleteBot = async (botId: string) => {
     try {
       const { data, error } = await supabase.functions.invoke('manage-bot', {
-        body: { action: 'delete', id: botId }
+        body: { action: 'delete', botId }
       });
       
       if (error) throw error;
-      if (!data.ok) throw new Error(data.error);
       
-      // 从本地存储移除
-      const storedBotIds = JSON.parse(localStorage.getItem('myBotIds') || '[]');
-      const newBotIds = storedBotIds.filter((id: string) => id !== botId);
-      localStorage.setItem('myBotIds', JSON.stringify(newBotIds));
+      // 从本地状态移除
+      setBots(prev => prev.filter(b => b.id !== botId));
+      
+      // 如果未登录，从 localStorage 移除
+      if (!user) {
+        const storedBotIds = JSON.parse(localStorage.getItem('guestBotIds') || '[]');
+        const newBotIds = storedBotIds.filter((id: string) => id !== botId);
+        localStorage.setItem('guestBotIds', JSON.stringify(newBotIds));
+      }
       
       // 如果删除的是当前选中的机器人，清除选中状态
       if (selectedBotId === botId) {
-        setSelectedBotId(newBotIds[0] || null);
+        const remainingBots = bots.filter(b => b.id !== botId);
+        setSelectedBotId(remainingBots[0]?.id || null);
         setSelectedChatId(null);
+        localStorage.removeItem('selectedBotId');
+        localStorage.removeItem('selectedChatId');
       }
-      
-      loadBots(newBotIds);
       
       toast({
         title: "删除成功",
@@ -261,9 +372,8 @@ const Index = () => {
   };
 
   // 刷新机器人列表
-  const handleBotUpdated = () => {
-    const storedBotIds = JSON.parse(localStorage.getItem('myBotIds') || '[]');
-    loadBots(storedBotIds);
+  const handleBotUpdated = (updatedBot: BotActivation) => {
+    setBots(prev => prev.map(b => b.id === updatedBot.id ? updatedBot : b));
   };
 
   // 发送消息
@@ -272,8 +382,14 @@ const Index = () => {
       return { error: "请选择聊天对象" };
     }
 
-    // 先检查本地状态
     const currentBot = bots.find(b => b.id === selectedBotId);
+    
+    // 检查 web 端口
+    if (currentBot && !currentBot.web_enabled) {
+      return { error: "Web端口已关闭，无法发送消息" };
+    }
+    
+    // 检查试用限制
     if (currentBot && !currentBot.is_authorized && currentBot.trial_messages_used >= currentBot.trial_limit) {
       return { trialExceeded: true };
     }
@@ -293,7 +409,11 @@ const Index = () => {
         return { trialExceeded: true };
       }
       
-      if (!data.ok) {
+      if (data.webDisabled) {
+        return { error: "Web端口已关闭" };
+      }
+      
+      if (data.error) {
         return { error: data.error };
       }
 
@@ -320,22 +440,51 @@ const Index = () => {
       updated.delete(chatId);
       return updated;
     });
+    
+    // 标记消息为已读
+    if (selectedBotId) {
+      supabase
+        .from('messages')
+        .update({ is_read: true })
+        .eq('bot_activation_id', selectedBotId)
+        .eq('telegram_chat_id', chatId)
+        .eq('is_read', false);
+    }
   };
 
   // 选择机器人
   const handleSelectBot = (botId: string) => {
     setSelectedBotId(botId);
+    setSelectedChatId(null);
     localStorage.setItem('selectedBotId', botId);
+    localStorage.removeItem('selectedChatId');
   };
 
-  // 构建聊天列表 - 过滤掉Web端口关闭期间的消息（is_read为null表示端口关闭时收到的）
-  const filteredMessages = messages.filter(m => m.is_read !== null);
+  // 获取选中机器人
+  const selectedBot = bots.find(b => b.id === selectedBotId) || null;
   
+  // 过滤消息 - 根据端口状态和管理员回复标记
+  const filteredMessages = messages.filter(m => {
+    // 过滤掉 is_read 为 null 的消息（端口关闭期间的消息）
+    if (m.is_read === null) return false;
+    
+    const msgBot = bots.find(b => b.id === m.bot_activation_id);
+    
+    // 如果 web 端口关闭，不显示该机器人的任何消息
+    if (msgBot && !msgBot.web_enabled) return false;
+    
+    // 如果 web 和 app 都关闭，过滤掉管理员回复
+    if (msgBot && !msgBot.web_enabled && !msgBot.app_enabled && m.is_admin_reply) return false;
+    
+    return true;
+  });
+
+  // 构建聊天列表
   const chatItems: ChatItem[] = (() => {
     const chatMap = new Map<string, ChatItem>();
     
     filteredMessages
-      .filter(m => m.direction === 'incoming')
+      .filter(m => m.direction === 'incoming' && m.bot_activation_id === selectedBotId)
       .forEach(m => {
         const key = `${m.bot_activation_id}-${m.telegram_chat_id}`;
         const existing = chatMap.get(key);
@@ -356,13 +505,18 @@ const Index = () => {
     );
   })();
 
-  const selectedBot = bots.find(b => b.id === selectedBotId) || null;
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <p>加载中...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <Navbar />
       
-      {/* 手机端：垂直排列，电脑端：水平排列 */}
       <div className="flex-1 flex flex-col md:flex-row overflow-auto p-4 gap-4">
         <ChatSidebar
           bots={bots}
@@ -412,6 +566,7 @@ const Index = () => {
                 <li>✓ 多机器人统一管理</li>
                 <li>✓ 简洁易用的操作界面</li>
                 <li>✓ 支持自定义问候语</li>
+                <li>✓ 支持图片收发</li>
               </ul>
             </div>
           </div>
@@ -422,6 +577,7 @@ const Index = () => {
         open={showAddBot}
         onOpenChange={setShowAddBot}
         onBotAdded={handleBotAdded}
+        userId={user?.id}
       />
     </div>
   );

@@ -8,13 +8,29 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Bot, Plus } from "lucide-react";
 
+interface BotActivation {
+  id: string;
+  bot_token: string;
+  personal_user_id: string;
+  greeting_message: string;
+  is_active: boolean;
+  is_authorized: boolean;
+  trial_messages_used: number;
+  trial_limit: number;
+  expire_at: string | null;
+  web_enabled: boolean;
+  app_enabled: boolean;
+  user_id: string | null;
+}
+
 interface AddBotDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onBotAdded: () => void;
+  onBotAdded: (bot: BotActivation) => void;
+  userId?: string;
 }
 
-export const AddBotDialog = ({ open, onOpenChange, onBotAdded }: AddBotDialogProps) => {
+export const AddBotDialog = ({ open, onOpenChange, onBotAdded, userId }: AddBotDialogProps) => {
   const [botToken, setBotToken] = useState("");
   const [personalUserId, setPersonalUserId] = useState("");
   const [greetingMessage, setGreetingMessage] = useState("你好！👋 有什么可以帮助你的吗？");
@@ -33,49 +49,33 @@ export const AddBotDialog = ({ open, onOpenChange, onBotAdded }: AddBotDialogPro
 
     setIsLoading(true);
     try {
-      // 检查是否已存在该令牌
-      const { data: existing } = await supabase
-        .from('bot_activations')
-        .select('id, is_authorized, trial_messages_used, trial_limit')
-        .eq('bot_token', botToken)
-        .maybeSingle();
-
-      if (existing) {
-        // 已存在，直接添加到本地列表（不阻止添加，让用户可以看到试用状态）
-        toast({
-          title: "已存在",
-          description: existing.is_authorized 
-            ? "此机器人令牌已添加到系统中" 
-            : `此机器人试用: ${existing.trial_messages_used}/${existing.trial_limit}`,
-        });
-        onBotAdded();
-        onOpenChange(false);
-        return;
-      }
-
-      // 创建新的激活（试用模式）
       const { data, error } = await supabase.functions.invoke('manage-bot', {
         body: {
-          action: 'create-trial',
-          botToken,
-          personalUserId,
-          greetingMessage,
+          action: 'add',
+          botToken: botToken.trim(),
+          personalUserId: personalUserId.trim(),
+          greetingMessage: greetingMessage.trim(),
+          userId: userId || null,
         }
       });
 
       if (error) throw error;
-      if (!data.ok) throw new Error(data.error);
+      
+      if (data.error) {
+        toast({
+          title: "添加失败",
+          description: data.error,
+          variant: "destructive",
+        });
+        return;
+      }
 
-      toast({
-        title: "添加成功",
-        description: `机器人已添加，可免费试用 ${data.data.trial_limit} 条消息`,
-      });
-
+      // 重置表单
       setBotToken("");
       setPersonalUserId("");
       setGreetingMessage("你好！👋 有什么可以帮助你的吗？");
-      onBotAdded();
-      onOpenChange(false);
+      
+      onBotAdded(data.bot);
     } catch (error: any) {
       toast({
         title: "添加失败",

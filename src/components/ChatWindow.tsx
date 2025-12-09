@@ -1,10 +1,9 @@
 import { useRef, useEffect, useState } from "react";
-import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Send, AlertTriangle, Volume2, VolumeX, Bot, ShoppingCart } from "lucide-react";
+import { Send, AlertTriangle, Volume2, VolumeX, Bot, ShoppingCart, WifiOff, Image } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 
 interface Message {
@@ -14,6 +13,7 @@ interface Message {
   content: string;
   direction: string;
   created_at: string;
+  is_admin_reply?: boolean;
 }
 
 interface BotActivation {
@@ -24,6 +24,8 @@ interface BotActivation {
   trial_messages_used: number;
   trial_limit: number;
   expire_at: string | null;
+  web_enabled: boolean;
+  app_enabled: boolean;
 }
 
 interface ChatWindowProps {
@@ -53,13 +55,11 @@ export const ChatWindow = ({
   const [isSending, setIsSending] = useState(false);
   const [showTrialDialog, setShowTrialDialog] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  // 每当消息变化时自动滚动到底部
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
@@ -67,7 +67,6 @@ export const ChatWindow = ({
   const handleSend = async () => {
     if (!replyText.trim()) return;
     
-    // 先检查试用限制
     if (selectedBot && !selectedBot.is_authorized && selectedBot.trial_messages_used >= selectedBot.trial_limit) {
       setShowTrialDialog(true);
       return;
@@ -87,7 +86,39 @@ export const ChatWindow = ({
   const filteredMessages = messages.filter(m => m.telegram_chat_id === selectedChatId);
   const isExpired = selectedBot?.expire_at && new Date(selectedBot.expire_at) < new Date();
   const trialExceeded = selectedBot && !selectedBot.is_authorized && selectedBot.trial_messages_used >= selectedBot.trial_limit;
-  const canSend = selectedBot?.is_active && !isExpired && !trialExceeded && selectedChatId;
+  const webDisabled = selectedBot && !selectedBot.web_enabled;
+  const canSend = selectedBot?.is_active && !isExpired && !trialExceeded && selectedChatId && !webDisabled;
+
+  // 检测消息是否包含图片
+  const renderMessageContent = (content: string) => {
+    // 检查是否是图片消息
+    if (content.includes('[图片]')) {
+      const urlMatch = content.match(/(https:\/\/api\.telegram\.org\/file\/[^\s]+)/);
+      if (urlMatch) {
+        const caption = content.replace('[图片]', '').replace(urlMatch[0], '').trim();
+        return (
+          <div className="space-y-2">
+            <img 
+              src={urlMatch[0]} 
+              alt="图片" 
+              className="max-w-full rounded-lg max-h-48 object-contain"
+              onError={(e) => {
+                (e.target as HTMLImageElement).style.display = 'none';
+              }}
+            />
+            {caption && <p className="text-sm">{caption}</p>}
+          </div>
+        );
+      }
+      return (
+        <div className="flex items-center gap-2 text-sm">
+          <Image className="h-4 w-4" />
+          <span>{content.replace('[图片]', '').trim() || '图片消息'}</span>
+        </div>
+      );
+    }
+    return <p className="text-sm whitespace-pre-wrap break-words">{content}</p>;
+  };
 
   // 无机器人状态
   if (!selectedBot) {
@@ -104,11 +135,45 @@ export const ChatWindow = ({
     );
   }
 
+  // Web端口关闭状态
+  if (webDisabled) {
+    return (
+      <div className="flex-1 flex flex-col">
+        <div className="p-4 border-b flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="font-medium">控制台</span>
+            <span className="px-2 py-0.5 rounded text-xs bg-destructive/20 text-destructive">
+              Web端口已关闭
+            </span>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="sm" onClick={onToggleSound}>
+              {enableSound ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+            </Button>
+          </div>
+        </div>
+        
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center p-8">
+            <WifiOff className="h-16 w-16 mx-auto text-destructive/30 mb-4" />
+            <h3 className="text-lg font-medium text-destructive">Web端口已关闭</h3>
+            <p className="text-sm text-muted-foreground mt-2">
+              管理员已关闭此机器人的Web端口，暂时无法查看和发送消息
+            </p>
+            <p className="text-sm text-muted-foreground mt-1">
+              请联系管理员开启Web端口
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // 无选中聊天状态
   if (!selectedChatId) {
     return (
       <div className="flex-1 flex flex-col">
-        {/* 头部 */}
         <div className="p-4 border-b flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="font-medium">控制台</span>
@@ -126,13 +191,8 @@ export const ChatWindow = ({
             )}
           </div>
           
-          {/* 提示音设置 */}
           <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onToggleSound}
-            >
+            <Button variant="ghost" size="sm" onClick={onToggleSound}>
               {enableSound ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
             </Button>
             {enableSound && (
@@ -187,13 +247,8 @@ export const ChatWindow = ({
           )}
         </div>
         
-        {/* 提示音设置 */}
         <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onToggleSound}
-          >
+          <Button variant="ghost" size="sm" onClick={onToggleSound}>
             {enableSound ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
           </Button>
           {enableSound && (
@@ -216,12 +271,9 @@ export const ChatWindow = ({
         </div>
       </div>
 
-      {/* 消息列表 - 电脑端300px x 400px */}
+      {/* 消息列表 */}
       <div className="flex-1 flex justify-center">
-        <ScrollArea 
-          ref={scrollAreaRef}
-          className="p-4 h-[300px] w-full max-w-[400px] overflow-y-auto"
-        >
+        <ScrollArea className="p-4 h-[300px] w-full max-w-[400px] overflow-y-auto">
           {filteredMessages.map((message) => (
             <div
               key={message.id}
@@ -232,12 +284,15 @@ export const ChatWindow = ({
               }`}
             >
               <div className="flex justify-between items-start mb-1">
-                <span className="font-medium text-sm">{message.telegram_user_name}</span>
+                <span className="font-medium text-sm">
+                  {message.telegram_user_name}
+                  {message.is_admin_reply && ' (管理员)'}
+                </span>
                 <span className="text-xs opacity-70 ml-2">
                   {new Date(message.created_at).toLocaleTimeString('zh-CN')}
                 </span>
               </div>
-              <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
+              {renderMessageContent(message.content)}
             </div>
           ))}
           <div ref={messagesEndRef} />
@@ -258,7 +313,7 @@ export const ChatWindow = ({
         </div>
       )}
 
-      {/* 发送消息 - 手机端底部固定，自适应宽度 */}
+      {/* 发送消息 */}
       <div className="p-3 md:p-4 border-t flex gap-2 bg-background sticky bottom-0 left-0 right-0 w-full">
         <Input
           placeholder="输入回复消息..."
@@ -278,7 +333,7 @@ export const ChatWindow = ({
         </Button>
       </div>
 
-      {/* 试用限制购买授权对话框 */}
+      {/* 试用限制对话框 */}
       <Dialog open={showTrialDialog} onOpenChange={setShowTrialDialog}>
         <DialogContent>
           <DialogHeader>
@@ -296,10 +351,7 @@ export const ChatWindow = ({
             <Button variant="outline" onClick={() => setShowTrialDialog(false)}>
               稍后再说
             </Button>
-            <Button onClick={() => {
-              setShowTrialDialog(false);
-              // 可以跳转到用户中心
-            }}>
+            <Button onClick={() => setShowTrialDialog(false)}>
               去绑定激活码
             </Button>
           </DialogFooter>
