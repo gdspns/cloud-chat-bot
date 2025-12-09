@@ -3,7 +3,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Send, AlertTriangle, Volume2, VolumeX, Bot, ShoppingCart, WifiOff, Image } from "lucide-react";
+import { Send, AlertTriangle, Volume2, VolumeX, Bot, ShoppingCart, Image, ImagePlus } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import type { BotActivation, Message } from "@/types/bot";
 
@@ -11,7 +11,7 @@ interface ChatWindowProps {
   selectedBot: BotActivation | null;
   selectedChatId: number | null;
   messages: Message[];
-  onSendMessage: (message: string) => Promise<{ trialExceeded?: boolean; error?: string }>;
+  onSendMessage: (message: string, photoBase64?: string) => Promise<{ trialExceeded?: boolean; error?: string }>;
   enableSound: boolean;
   onToggleSound: () => void;
   soundType: string;
@@ -33,8 +33,10 @@ export const ChatWindow = ({
   const [replyText, setReplyText] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [showTrialDialog, setShowTrialDialog] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const scrollToBottom = () => {
     // 只滚动消息框内部，不滚动整个页面
@@ -51,7 +53,7 @@ export const ChatWindow = ({
   }, [messages]);
 
   const handleSend = async () => {
-    if (!replyText.trim()) return;
+    if (!replyText.trim() && !selectedImage) return;
     
     if (selectedBot && !selectedBot.is_authorized && selectedBot.trial_messages_used >= selectedBot.trial_limit) {
       setShowTrialDialog(true);
@@ -59,14 +61,32 @@ export const ChatWindow = ({
     }
     
     setIsSending(true);
-    const result = await onSendMessage(replyText);
+    const result = await onSendMessage(replyText, selectedImage || undefined);
     setIsSending(false);
     
     if (result.trialExceeded) {
       setShowTrialDialog(true);
     } else if (!result.error) {
       setReplyText("");
+      setSelectedImage(null);
     }
+  };
+
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        alert('图片大小不能超过5MB');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        setSelectedImage(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+    // 清空input，允许再次选择同一文件
+    e.target.value = '';
   };
 
   const filteredMessages = messages.filter(m => m.telegram_chat_id === selectedChatId);
@@ -290,8 +310,37 @@ export const ChatWindow = ({
         </div>
       )}
 
+      {/* 图片预览 */}
+      {selectedImage && (
+        <div className="mx-4 mb-2 relative inline-block">
+          <img src={selectedImage} alt="预览" className="max-h-24 rounded-lg" />
+          <button 
+            onClick={() => setSelectedImage(null)}
+            className="absolute -top-2 -right-2 bg-destructive text-destructive-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
       {/* 发送消息 */}
       <div className="p-3 md:p-4 border-t flex gap-2 bg-background sticky bottom-0 left-0 right-0 w-full">
+        <input
+          type="file"
+          accept="image/*"
+          ref={fileInputRef}
+          onChange={handleImageSelect}
+          className="hidden"
+        />
+        <Button 
+          variant="ghost" 
+          size="sm"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={!canSend}
+          className="shrink-0"
+        >
+          <ImagePlus className="h-4 w-4" />
+        </Button>
         <Input
           placeholder="输入回复消息..."
           value={replyText}
@@ -302,7 +351,7 @@ export const ChatWindow = ({
         />
         <Button 
           onClick={handleSend} 
-          disabled={!canSend || isSending}
+          disabled={!canSend || isSending || (!replyText.trim() && !selectedImage)}
           size="sm"
           className="shrink-0"
         >

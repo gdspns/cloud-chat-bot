@@ -342,7 +342,7 @@ const Index = () => {
   };
 
   // 发送消息
-  const handleSendMessage = async (message: string): Promise<{ trialExceeded?: boolean; error?: string }> => {
+  const handleSendMessage = async (message: string, photoBase64?: string): Promise<{ trialExceeded?: boolean; error?: string }> => {
     if (!selectedBotId || !selectedChatId) {
       return { error: "请选择聊天对象" };
     }
@@ -365,6 +365,7 @@ const Index = () => {
           activationId: selectedBotId,
           chatId: selectedChatId,
           message,
+          photoBase64,
         }
       });
 
