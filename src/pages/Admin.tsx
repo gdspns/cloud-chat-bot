@@ -3,7 +3,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { Trash2, Play, Pause, Calendar, Copy, CheckCircle, XCircle, Key, Globe, Smartphone, List, MessageSquare, Send, LayoutDashboard, Users, Bot, Image as ImageIcon } from "lucide-react";
+import { Trash2, Play, Pause, Calendar, Copy, CheckCircle, XCircle, Key, Globe, Smartphone, List, MessageSquare, Send, LayoutDashboard, Users, Bot, Image as ImageIcon, ChevronDown, ChevronUp } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -91,6 +91,9 @@ export const Admin = () => {
   const [bindingBotId, setBindingBotId] = useState<string | null>(null);
   const [activationCode, setActivationCode] = useState("");
   const [isBinding, setIsBinding] = useState(false);
+  
+  // 用户列表展开相关
+  const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
   
   const { toast } = useToast();
 
@@ -683,7 +686,7 @@ export const Admin = () => {
                 <Users className="h-5 w-5" />
                 用户列表
               </h2>
-              <ScrollArea className="h-[300px]">
+              <ScrollArea className="h-[400px]">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -691,32 +694,129 @@ export const Admin = () => {
                       <TableHead>用户ID</TableHead>
                       <TableHead>机器人数量</TableHead>
                       <TableHead>状态</TableHead>
+                      <TableHead>操作</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {(() => {
-                      const userMap = new Map<string, { email?: string; botCount: number; authorizedCount: number }>();
+                      const userMap = new Map<string, { email?: string; botCount: number; authorizedCount: number; bots: BotActivation[] }>();
                       realBots.forEach(bot => {
                         if (bot.user_id) {
-                          const existing = userMap.get(bot.user_id) || { email: bot.user_email, botCount: 0, authorizedCount: 0 };
+                          const existing = userMap.get(bot.user_id) || { email: bot.user_email, botCount: 0, authorizedCount: 0, bots: [] };
                           existing.botCount++;
+                          existing.bots.push(bot);
                           if (bot.is_authorized) existing.authorizedCount++;
                           if (bot.user_email) existing.email = bot.user_email;
                           userMap.set(bot.user_id, existing);
                         }
                       });
-                      return Array.from(userMap.entries()).map(([userId, info]) => (
-                        <TableRow key={userId}>
-                          <TableCell>{info.email || '-'}</TableCell>
-                          <TableCell className="font-mono text-xs">{userId.substring(0, 8)}...</TableCell>
-                          <TableCell>{info.botCount}</TableCell>
-                          <TableCell>
-                            <Badge className={info.authorizedCount > 0 ? 'bg-green-500/20 text-green-700' : 'bg-yellow-500/20 text-yellow-700'}>
-                              {info.authorizedCount > 0 ? `${info.authorizedCount}个已激活` : '试用中'}
-                            </Badge>
-                          </TableCell>
-                        </TableRow>
-                      ));
+                      return Array.from(userMap.entries()).map(([userId, info]) => {
+                        const isExpanded = expandedUsers.has(userId);
+                        return (
+                          <>
+                            <TableRow key={userId}>
+                              <TableCell className="flex items-center gap-2">
+                                {info.email || '-'}
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-6 w-6 p-0 text-destructive hover:text-destructive"
+                                  onClick={() => {
+                                    if (confirm(`确定要删除用户 ${info.email || userId} 吗？这将解绑该用户的所有机器人。`)) {
+                                      // 解绑该用户所有机器人
+                                      info.bots.forEach(bot => {
+                                        supabase.functions.invoke('manage-bot', {
+                                          body: { action: 'unbind-user', id: bot.id }
+                                        });
+                                      });
+                                      toast({
+                                        title: "已解绑",
+                                        description: `用户 ${info.email || userId} 的机器人已解绑`,
+                                      });
+                                      loadActivations();
+                                    }
+                                  }}
+                                  title="删除用户绑定"
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              </TableCell>
+                              <TableCell className="font-mono text-xs">{userId.substring(0, 8)}...</TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  {info.botCount}
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-6 w-6 p-0"
+                                    onClick={() => {
+                                      setExpandedUsers(prev => {
+                                        const next = new Set(prev);
+                                        if (next.has(userId)) {
+                                          next.delete(userId);
+                                        } else {
+                                          next.add(userId);
+                                        }
+                                        return next;
+                                      });
+                                    }}
+                                  >
+                                    {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                                  </Button>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <Badge className={info.authorizedCount > 0 ? 'bg-green-500/20 text-green-700' : 'bg-yellow-500/20 text-yellow-700'}>
+                                  {info.authorizedCount > 0 ? `${info.authorizedCount}个已激活` : '试用中'}
+                                </Badge>
+                              </TableCell>
+                              <TableCell>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(userId);
+                                    toast({ title: "已复制", description: "用户ID已复制到剪贴板" });
+                                  }}
+                                >
+                                  <Copy className="h-3 w-3" />
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                            {isExpanded && info.bots.map(bot => {
+                              const botExpired = bot.expire_at && new Date(bot.expire_at) < new Date();
+                              return (
+                                <TableRow key={`${userId}-${bot.id}`} className="bg-muted/50">
+                                  <TableCell colSpan={2} className="pl-8">
+                                    <div className="flex items-center gap-2">
+                                      <Bot className="h-4 w-4 text-muted-foreground" />
+                                      <span className="font-mono text-xs">{bot.bot_token.substring(0, 20)}...</span>
+                                    </div>
+                                  </TableCell>
+                                  <TableCell>
+                                    <span className="text-xs">{bot.trial_messages_used}/{bot.trial_limit} 消息</span>
+                                  </TableCell>
+                                  <TableCell>
+                                    <div className="flex gap-1 flex-wrap">
+                                      {bot.is_authorized ? (
+                                        <Badge className="bg-blue-500/20 text-blue-700 text-xs">已激活</Badge>
+                                      ) : (
+                                        <Badge className="bg-yellow-500/20 text-yellow-700 text-xs">试用</Badge>
+                                      )}
+                                      {botExpired && <Badge variant="destructive" className="text-xs">已过期</Badge>}
+                                    </div>
+                                  </TableCell>
+                                  <TableCell>
+                                    <span className="text-xs text-muted-foreground">
+                                      {bot.expire_at ? new Date(bot.expire_at).toLocaleDateString('zh-CN') : '-'}
+                                    </span>
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            })}
+                          </>
+                        );
+                      });
                     })()}
                   </TableBody>
                 </Table>
