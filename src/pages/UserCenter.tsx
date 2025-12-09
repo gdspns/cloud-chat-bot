@@ -133,11 +133,6 @@ export const UserCenter = () => {
 
   const handleDeleteBot = async (id: string) => {
     if (isUserDisabled) {
-      toast({
-        title: "操作被禁止",
-        description: "您的账户已被禁用，无法删除机器人",
-        variant: "destructive",
-      });
       return;
     }
     
@@ -165,11 +160,6 @@ export const UserCenter = () => {
 
   const handleBindCode = async (botId: string) => {
     if (isUserDisabled) {
-      toast({
-        title: "操作被禁止",
-        description: "您的账户已被禁用，无法绑定激活码",
-        variant: "destructive",
-      });
       return;
     }
     
@@ -218,11 +208,6 @@ export const UserCenter = () => {
 
   const handleBotAdded = (newBot: BotActivation) => {
     if (isUserDisabled) {
-      toast({
-        title: "操作被禁止",
-        description: "您的账户已被禁用，无法添加机器人",
-        variant: "destructive",
-      });
       setShowAddBot(false);
       return;
     }
