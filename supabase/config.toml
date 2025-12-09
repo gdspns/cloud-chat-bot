@@ -8,3 +8,6 @@ verify_jwt = false
 
 [functions.manage-bot]
 verify_jwt = false
+
+[functions.get-telegram-image]
+verify_jwt = false

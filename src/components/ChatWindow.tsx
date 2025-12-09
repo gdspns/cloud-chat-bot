@@ -95,21 +95,32 @@ export const ChatWindow = ({
   const webDisabled = selectedBot && !selectedBot.web_enabled;
   const canSend = selectedBot?.is_active && !isExpired && !trialExceeded && selectedChatId && !webDisabled;
 
+  // 构建图片代理URL
+  const getProxyImageUrl = (telegramUrl: string) => {
+    if (!selectedBot) return '';
+    const encodedUrl = encodeURIComponent(telegramUrl);
+    return `https://ibyscmelievcbkhtshcn.supabase.co/functions/v1/get-telegram-image?url=${encodedUrl}&botId=${selectedBot.id}`;
+  };
+
   // 检测消息是否包含图片
   const renderMessageContent = (content: string) => {
     // 检查是否是图片消息
     if (content.includes('[图片]')) {
       const urlMatch = content.match(/(https:\/\/api\.telegram\.org\/file\/[^\s]+)/);
-      if (urlMatch) {
+      if (urlMatch && selectedBot) {
         const caption = content.replace('[图片]', '').replace(urlMatch[0], '').trim();
+        const proxyUrl = getProxyImageUrl(urlMatch[0]);
         return (
           <div className="space-y-2">
             <img 
-              src={urlMatch[0]} 
+              src={proxyUrl} 
               alt="图片" 
-              className="max-w-full rounded-lg max-h-48 object-contain"
+              className="max-w-full rounded-lg max-h-48 object-contain cursor-pointer"
+              onClick={() => window.open(proxyUrl, '_blank')}
               onError={(e) => {
-                (e.target as HTMLImageElement).style.display = 'none';
+                const img = e.target as HTMLImageElement;
+                img.style.display = 'none';
+                console.error('Image load failed:', proxyUrl);
               }}
             />
             {caption && <p className="text-sm">{caption}</p>}
