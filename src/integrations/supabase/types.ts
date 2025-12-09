@@ -64,6 +64,7 @@ export type Database = {
           trial_limit: number | null
           trial_messages_used: number | null
           updated_at: string
+          user_id: string | null
           web_enabled: boolean | null
         }
         Insert: {
@@ -80,6 +81,7 @@ export type Database = {
           trial_limit?: number | null
           trial_messages_used?: number | null
           updated_at?: string
+          user_id?: string | null
           web_enabled?: boolean | null
         }
         Update: {
@@ -96,6 +98,7 @@ export type Database = {
           trial_limit?: number | null
           trial_messages_used?: number | null
           updated_at?: string
+          user_id?: string | null
           web_enabled?: boolean | null
         }
         Relationships: []
@@ -140,6 +143,7 @@ export type Database = {
           created_at: string
           direction: string
           id: string
+          is_admin_reply: boolean | null
           is_read: boolean | null
           telegram_chat_id: number
           telegram_message_id: number | null
@@ -151,6 +155,7 @@ export type Database = {
           created_at?: string
           direction: string
           id?: string
+          is_admin_reply?: boolean | null
           is_read?: boolean | null
           telegram_chat_id: number
           telegram_message_id?: number | null
@@ -162,6 +167,7 @@ export type Database = {
           created_at?: string
           direction?: string
           id?: string
+          is_admin_reply?: boolean | null
           is_read?: boolean | null
           telegram_chat_id?: number
           telegram_message_id?: number | null
