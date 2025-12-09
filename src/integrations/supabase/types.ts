@@ -136,6 +136,30 @@ export type Database = {
         }
         Relationships: []
       }
+      disabled_users: {
+        Row: {
+          disabled_at: string
+          disabled_by: string | null
+          id: string
+          reason: string | null
+          user_id: string
+        }
+        Insert: {
+          disabled_at?: string
+          disabled_by?: string | null
+          id?: string
+          reason?: string | null
+          user_id: string
+        }
+        Update: {
+          disabled_at?: string
+          disabled_by?: string | null
+          id?: string
+          reason?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       messages: {
         Row: {
           bot_activation_id: string

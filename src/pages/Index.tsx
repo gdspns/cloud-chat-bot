@@ -20,6 +20,7 @@ const Index = () => {
   const [enableSound, setEnableSound] = useState(true);
   const [soundType, setSoundType] = useState("qq");
   const [isLoading, setIsLoading] = useState(true);
+  const [isUserDisabled, setIsUserDisabled] = useState(false);
 
   // 检查用户登录状态
   useEffect(() => {
@@ -65,6 +66,8 @@ const Index = () => {
       if (event === 'SIGNED_IN' && session?.user) {
         setTimeout(async () => {
           if (!mounted) return;
+          // 检查用户是否被禁用
+          await checkUserDisabled(session.user.id);
           // 同步游客机器人到用户账户
           await syncGuestBotsToUser(session.user);
           loadBots(session.user);
@@ -134,6 +137,21 @@ const Index = () => {
       });
     }
   }, [enableSound, soundType]);
+
+  // 检查用户是否被禁用
+  const checkUserDisabled = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('disabled_users')
+        .select('id')
+        .eq('user_id', userId)
+        .single();
+      
+      setIsUserDisabled(!!data && !error);
+    } catch (error) {
+      setIsUserDisabled(false);
+    }
+  };
 
   // 同步游客机器人到用户账户
   const syncGuestBotsToUser = async (currentUser: User) => {
@@ -325,6 +343,17 @@ const Index = () => {
 
   // 处理机器人添加
   const handleBotAdded = async (newBot: BotActivation) => {
+    // 检查用户是否被禁用
+    if (user && isUserDisabled) {
+      toast({
+        title: "操作被禁止",
+        description: "您的账户已被禁用，无法添加机器人",
+        variant: "destructive",
+      });
+      setShowAddBot(false);
+      return;
+    }
+    
     // 如果用户未登录，保存到 localStorage
     if (!user) {
       const storedBotIds = JSON.parse(localStorage.getItem('guestBotIds') || '[]');
@@ -347,6 +376,16 @@ const Index = () => {
 
   // 删除机器人
   const handleDeleteBot = async (botId: string) => {
+    // 检查用户是否被禁用
+    if (user && isUserDisabled) {
+      toast({
+        title: "操作被禁止",
+        description: "您的账户已被禁用，无法删除机器人",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     try {
       const { data, error } = await supabase.functions.invoke('manage-bot', {
         body: { action: 'delete', botId }
