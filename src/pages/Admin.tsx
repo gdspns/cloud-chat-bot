@@ -95,6 +95,9 @@ export const Admin = () => {
   // 用户列表展开相关
   const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
   
+  // 禁用用户相关
+  const [disabledUsers, setDisabledUsers] = useState<Set<string>>(new Set());
+  
   // 图片预览相关
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   
@@ -105,10 +108,12 @@ export const Admin = () => {
       loadActivations();
       loadAllCodes();
       loadAllMessages();
+      loadDisabledUsers();
       const interval = setInterval(() => {
         loadActivations();
         loadAllCodes();
         loadAllMessages();
+        loadDisabledUsers();
       }, 10000);
       return () => clearInterval(interval);
     }
@@ -160,6 +165,68 @@ export const Admin = () => {
       }
     } catch (error) {
       console.error('加载消息列表失败:', error);
+    }
+  };
+
+  const loadDisabledUsers = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('disabled_users')
+        .select('user_id');
+      
+      if (error) throw error;
+      setDisabledUsers(new Set((data || []).map((d: any) => d.user_id)));
+    } catch (error) {
+      console.error('加载禁用用户列表失败:', error);
+    }
+  };
+
+  const handleToggleDisableUser = async (userId: string, isCurrentlyDisabled: boolean) => {
+    try {
+      if (isCurrentlyDisabled) {
+        // 解禁用户
+        const { error } = await supabase
+          .from('disabled_users')
+          .delete()
+          .eq('user_id', userId);
+        
+        if (error) throw error;
+        
+        setDisabledUsers(prev => {
+          const next = new Set(prev);
+          next.delete(userId);
+          return next;
+        });
+        
+        toast({
+          title: "已解禁",
+          description: "用户已恢复正常使用",
+        });
+      } else {
+        // 禁用用户
+        const { error } = await supabase
+          .from('disabled_users')
+          .insert({ user_id: userId });
+        
+        if (error) throw error;
+        
+        setDisabledUsers(prev => {
+          const next = new Set(prev);
+          next.add(userId);
+          return next;
+        });
+        
+        toast({
+          title: "已禁用",
+          description: "用户已被禁止操作",
+        });
+      }
+    } catch (error: any) {
+      toast({
+        title: "操作失败",
+        description: error.message,
+        variant: "destructive",
+      });
     }
   };
 
@@ -718,31 +785,42 @@ export const Admin = () => {
                         return (
                           <>
                             <TableRow key={userId}>
-                              <TableCell className="flex items-center gap-2">
-                                {info.email || '-'}
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="h-6 w-6 p-0 text-destructive hover:text-destructive"
-                                  onClick={() => {
-                                    if (confirm(`确定要删除用户 ${info.email || userId} 吗？这将解绑该用户的所有机器人。`)) {
-                                      // 解绑该用户所有机器人
-                                      info.bots.forEach(bot => {
-                                        supabase.functions.invoke('manage-bot', {
-                                          body: { action: 'unbind-user', id: bot.id }
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  {info.email || '-'}
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-6 w-6 p-0 text-destructive hover:text-destructive"
+                                    onClick={() => {
+                                      if (confirm(`确定要删除用户 ${info.email || userId} 吗？这将解绑该用户的所有机器人。`)) {
+                                        // 解绑该用户所有机器人
+                                        info.bots.forEach(bot => {
+                                          supabase.functions.invoke('manage-bot', {
+                                            body: { action: 'unbind-user', id: bot.id }
+                                          });
                                         });
-                                      });
-                                      toast({
-                                        title: "已解绑",
-                                        description: `用户 ${info.email || userId} 的机器人已解绑`,
-                                      });
-                                      loadActivations();
-                                    }
-                                  }}
-                                  title="删除用户绑定"
-                                >
-                                  <Trash2 className="h-3 w-3" />
-                                </Button>
+                                        toast({
+                                          title: "已解绑",
+                                          description: `用户 ${info.email || userId} 的机器人已解绑`,
+                                        });
+                                        loadActivations();
+                                      }
+                                    }}
+                                    title="删除用户绑定"
+                                  >
+                                    <Trash2 className="h-3 w-3" />
+                                  </Button>
+                                  <Switch
+                                    checked={disabledUsers.has(userId)}
+                                    onCheckedChange={() => handleToggleDisableUser(userId, disabledUsers.has(userId))}
+                                    className="data-[state=checked]:bg-destructive h-5 w-9"
+                                    title={disabledUsers.has(userId) ? '点击解禁' : '点击禁用'}
+                                  />
+                                  {disabledUsers.has(userId) && (
+                                    <span className="text-xs text-destructive">已禁用</span>
+                                  )}
+                                </div>
                               </TableCell>
                               <TableCell className="font-mono text-xs">{userId.substring(0, 8)}...</TableCell>
                               <TableCell>

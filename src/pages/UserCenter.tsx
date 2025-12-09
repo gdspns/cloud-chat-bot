@@ -20,6 +20,7 @@ export const UserCenter = () => {
   const [bindingBotId, setBindingBotId] = useState<string | null>(null);
   const [activationCode, setActivationCode] = useState("");
   const [isBinding, setIsBinding] = useState(false);
+  const [isUserDisabled, setIsUserDisabled] = useState(false);
   const { toast } = useToast();
 
   // 检查用户登录状态
@@ -54,12 +55,27 @@ export const UserCenter = () => {
     return () => subscription.unsubscribe();
   }, [navigate, toast]);
 
-  // 加载用户的机器人
+  // 加载用户的机器人和禁用状态
   useEffect(() => {
     if (user) {
       loadBots();
+      checkUserDisabled(user.id);
     }
   }, [user]);
+
+  const checkUserDisabled = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('disabled_users')
+        .select('id')
+        .eq('user_id', userId)
+        .single();
+      
+      setIsUserDisabled(!!data && !error);
+    } catch (error) {
+      setIsUserDisabled(false);
+    }
+  };
 
   // 实时订阅机器人状态更新
   useEffect(() => {
@@ -116,6 +132,15 @@ export const UserCenter = () => {
   };
 
   const handleDeleteBot = async (id: string) => {
+    if (isUserDisabled) {
+      toast({
+        title: "操作被禁止",
+        description: "您的账户已被禁用，无法删除机器人",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     try {
       const { error } = await supabase.functions.invoke('manage-bot', {
         body: { action: 'delete', botId: id }
@@ -139,6 +164,15 @@ export const UserCenter = () => {
   };
 
   const handleBindCode = async (botId: string) => {
+    if (isUserDisabled) {
+      toast({
+        title: "操作被禁止",
+        description: "您的账户已被禁用，无法绑定激活码",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     if (!activationCode.trim()) {
       toast({
         title: "错误",
@@ -183,6 +217,16 @@ export const UserCenter = () => {
   };
 
   const handleBotAdded = (newBot: BotActivation) => {
+    if (isUserDisabled) {
+      toast({
+        title: "操作被禁止",
+        description: "您的账户已被禁用，无法添加机器人",
+        variant: "destructive",
+      });
+      setShowAddBot(false);
+      return;
+    }
+    
     setBots(prev => [newBot, ...prev.filter(b => b.id !== newBot.id)]);
     setShowAddBot(false);
     toast({
