@@ -357,7 +357,7 @@ serve(async (req) => {
           });
         }
 
-        // 更新机器人为已激活
+        // 更新机器人为已激活 - 同时重置端口开关为开启状态
         const { error: updateError } = await supabase
           .from('bot_activations')
           .update({
@@ -365,6 +365,8 @@ serve(async (req) => {
             is_active: true,
             expire_at: codeData.expire_at,
             trial_messages_used: 0,
+            web_enabled: true,  // 激活时重置为开启
+            app_enabled: true,  // 激活时重置为开启
           })
           .eq('id', botId);
 
@@ -425,6 +427,8 @@ serve(async (req) => {
             is_authorized: true,
             is_active: true,
             trial_messages_used: 0,
+            web_enabled: true,  // 激活时重置为开启
+            app_enabled: true,  // 激活时重置为开启
           })
           .eq('id', id);
 
@@ -491,7 +495,7 @@ serve(async (req) => {
           });
         }
 
-        // 更新机器人为已激活
+        // 更新机器人为已激活 - 同时重置端口开关为开启状态
         const { error: updateError } = await supabase
           .from('bot_activations')
           .update({
@@ -499,6 +503,8 @@ serve(async (req) => {
             is_active: true,
             expire_at: codeData.expire_at,
             trial_messages_used: 0,
+            web_enabled: true,  // 激活时重置为开启
+            app_enabled: true,  // 激活时重置为开启
           })
           .eq('id', botId);
 
@@ -537,11 +543,14 @@ serve(async (req) => {
 
           // 设置webhook - 使用bot token作为路径
           const webhookUrl = `${supabaseUrl}/functions/v1/telegram-webhook/${bot.bot_token}`;
-          await fetch(`https://api.telegram.org/bot${bot.bot_token}/setWebhook`, {
+          console.log('Setting webhook for authorized bot:', webhookUrl);
+          const webhookResult = await fetch(`https://api.telegram.org/bot${bot.bot_token}/setWebhook`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ url: webhookUrl }),
           });
+          const webhookResponse = await webhookResult.json();
+          console.log('Webhook set result:', webhookResponse);
         }
 
         return new Response(JSON.stringify({ ok: true }), {
