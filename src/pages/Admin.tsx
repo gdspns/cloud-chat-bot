@@ -1262,11 +1262,11 @@ export const Admin = () => {
                 </div>
 
                 {/* 消息区域 */}
-                <div className="md:col-span-2 border rounded-lg flex flex-col">
-                  <div className="p-3 border-b font-medium">
+                <div className="md:col-span-2 border rounded-lg flex flex-col h-[540px]">
+                  <div className="p-3 border-b font-medium shrink-0">
                     {selectedChatId ? `对话 - ChatID: ${selectedChatId}` : '选择一个聊天'}
                   </div>
-                  <ScrollArea className="flex-1 p-4">
+                  <ScrollArea className="flex-1 p-4 overflow-hidden">
                     <div className="space-y-3">
                       {getSelectedChatMessages().map((msg) => {
                         // 检测是否为图片消息
