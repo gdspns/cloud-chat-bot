@@ -62,9 +62,12 @@ const Index = () => {
       setUser(session?.user ?? null);
       setIsLoading(false);
       
-      if (event === 'SIGNED_IN') {
-        setTimeout(() => {
-          if (mounted) loadBots(session?.user ?? null);
+      if (event === 'SIGNED_IN' && session?.user) {
+        setTimeout(async () => {
+          if (!mounted) return;
+          // 同步游客机器人到用户账户
+          await syncGuestBotsToUser(session.user);
+          loadBots(session.user);
         }, 0);
       }
     });
@@ -132,6 +135,28 @@ const Index = () => {
     }
   }, [enableSound, soundType]);
 
+  // 同步游客机器人到用户账户
+  const syncGuestBotsToUser = async (currentUser: User) => {
+    const guestBotIds = localStorage.getItem('guestBotIds');
+    if (!guestBotIds) return;
+    
+    const ids = JSON.parse(guestBotIds);
+    if (ids.length === 0) return;
+    
+    try {
+      // 将游客机器人绑定到用户
+      await (supabase
+        .from('bot_activations') as any)
+        .update({ user_id: currentUser.id })
+        .in('id', ids)
+        .is('user_id', null);
+      
+      localStorage.removeItem('guestBotIds');
+    } catch (error) {
+      console.error('同步游客机器人失败:', error);
+    }
+  };
+
   // 加载机器人列表
   const loadBots = useCallback(async (currentUser: User | null = user) => {
     try {
@@ -145,29 +170,6 @@ const Index = () => {
 
         if (error) throw error;
         setBots((data || []) as BotActivation[]);
-        
-        // 同步 localStorage 中的游客机器人到用户账户
-        const guestBotIds = localStorage.getItem('guestBotIds');
-        if (guestBotIds) {
-          const ids = JSON.parse(guestBotIds);
-          if (ids.length > 0) {
-            // 将游客机器人绑定到用户
-            await (supabase
-              .from('bot_activations') as any)
-              .update({ user_id: currentUser.id })
-              .in('id', ids)
-              .is('user_id', null);
-            
-            localStorage.removeItem('guestBotIds');
-            // 重新加载
-            const { data: newData } = await (supabase
-              .from('bot_activations')
-              .select('*') as any)
-              .eq('user_id', currentUser.id)
-              .order('created_at', { ascending: false });
-            if (newData) setBots(newData as BotActivation[]);
-          }
-        }
       } else {
         // 未登录用户：从 localStorage 加载
         const storedBotIds = localStorage.getItem('guestBotIds');
@@ -282,22 +284,35 @@ const Index = () => {
       )
       .subscribe();
 
-    // 订阅机器人状态更新（端口切换等）
+    // 订阅机器人状态更新（端口切换、新增、删除等）
     const botsChannel = supabase
       .channel('user-bots')
       .on(
         'postgres_changes',
         {
-          event: 'UPDATE',
+          event: '*',
           schema: 'public',
           table: 'bot_activations',
         },
         (payload) => {
-          const updatedBot = payload.new as unknown as BotActivation;
-          // 检查是否属于当前用户
-          if (!botIds.includes(updatedBot.id)) return;
-          
-          setBots(prev => prev.map(b => b.id === updatedBot.id ? updatedBot : b));
+          if (payload.eventType === 'INSERT') {
+            const newBot = payload.new as unknown as BotActivation;
+            // 检查是否属于当前用户
+            if (user && newBot.user_id === user.id) {
+              setBots(prev => {
+                if (prev.find(b => b.id === newBot.id)) return prev;
+                return [newBot, ...prev];
+              });
+            }
+          } else if (payload.eventType === 'UPDATE') {
+            const updatedBot = payload.new as unknown as BotActivation;
+            // 检查是否属于当前用户
+            if (!botIds.includes(updatedBot.id)) return;
+            setBots(prev => prev.map(b => b.id === updatedBot.id ? updatedBot : b));
+          } else if (payload.eventType === 'DELETE') {
+            const deletedBot = payload.old as unknown as BotActivation;
+            setBots(prev => prev.filter(b => b.id !== deletedBot.id));
+          }
         }
       )
       .subscribe();
@@ -469,13 +484,13 @@ const Index = () => {
     // 过滤掉 is_read 为 null 的消息（端口关闭期间的消息）
     if (m.is_read === null) return false;
     
+    // 过滤掉管理员代回复的消息（不在用户消息框显示）
+    if (m.is_admin_reply) return false;
+    
     const msgBot = bots.find(b => b.id === m.bot_activation_id);
     
     // 如果 web 端口关闭，不显示该机器人的任何消息
     if (msgBot && !msgBot.web_enabled) return false;
-    
-    // 如果 web 和 app 都关闭，过滤掉管理员回复
-    if (msgBot && !msgBot.web_enabled && !msgBot.app_enabled && m.is_admin_reply) return false;
     
     return true;
   });
