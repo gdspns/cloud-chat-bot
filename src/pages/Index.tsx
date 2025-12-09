@@ -255,7 +255,9 @@ const Index = () => {
         .order('created_at', { ascending: true });
 
       if (!error && data) {
-        setMessages(data as unknown as Message[]);
+        // 过滤掉 is_read 为 null 的消息（端口关闭期间的消息，包括管理员代回复）
+        const filteredMessages = (data as unknown as Message[]).filter(msg => msg.is_read !== null);
+        setMessages(filteredMessages);
       }
     };
 
