@@ -21,7 +21,7 @@ const ADMIN_ACTIONS = [
   'toggle',
   'extend',
   'toggle-port',
-  'bind-existing',
+  // 'bind-existing' 和 'bind-code' 移除，允许普通用户绑定激活码
   'cleanup-expired-trials',
 ];
 
@@ -330,7 +330,8 @@ serve(async (req) => {
         });
       }
 
-      // 绑定已存在的机器人到激活码
+      // 绑定已存在的机器人到激活码 (支持 bind-code 和 bind-existing 两种action名称)
+      case 'bind-code':
       case 'bind-existing': {
         const { activationCode: code, botId } = params;
         

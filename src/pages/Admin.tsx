@@ -181,17 +181,18 @@ export const Admin = () => {
 
   const handleSessionExpired = async () => {
     // 尝试刷新会话
-    const { data: { session: newSession }, error } = await supabase.auth.refreshSession();
-    if (error || !newSession) {
-      // 刷新失败，需要重新登录
-      await supabase.auth.signOut();
-      toast({
-        title: "会话已过期",
-        description: "请重新登录",
-        variant: "destructive"
-      });
+    try {
+      const { data: { session: newSession }, error } = await supabase.auth.refreshSession();
+      if (error || !newSession) {
+        // 刷新失败，仅显示提示，不自动登出
+        console.log('会话刷新失败，可能需要重新登录');
+        return false;
+      }
+      return true;
+    } catch (e) {
+      console.error('会话刷新错误:', e);
+      return false;
     }
-    return !!newSession;
   };
 
   const loadActivations = async () => {
