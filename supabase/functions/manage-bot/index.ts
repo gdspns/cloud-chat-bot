@@ -773,6 +773,70 @@ serve(async (req) => {
         });
       }
 
+      // 禁用/解禁用户
+      case 'toggle-user-disabled': {
+        const { userId, disabled } = params;
+        
+        if (!userId) {
+          return new Response(JSON.stringify({ ok: false, error: '用户ID不能为空' }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        if (disabled) {
+          // 禁用用户
+          const { error } = await supabase
+            .from('disabled_users')
+            .insert({ user_id: userId });
+          
+          if (error) {
+            // 如果已存在则忽略
+            if (!error.message.includes('duplicate')) {
+              return new Response(JSON.stringify({ ok: false, error: error.message }), {
+                status: 400,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+              });
+            }
+          }
+        } else {
+          // 解禁用户
+          const { error } = await supabase
+            .from('disabled_users')
+            .delete()
+            .eq('user_id', userId);
+          
+          if (error) {
+            return new Response(JSON.stringify({ ok: false, error: error.message }), {
+              status: 400,
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            });
+          }
+        }
+
+        return new Response(JSON.stringify({ ok: true, disabled }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      // 获取禁用用户列表
+      case 'list-disabled-users': {
+        const { data, error } = await supabase
+          .from('disabled_users')
+          .select('user_id');
+        
+        if (error) {
+          return new Response(JSON.stringify({ ok: false, error: error.message }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        return new Response(JSON.stringify({ ok: true, data: data || [] }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
       default:
         return new Response(JSON.stringify({ ok: false, error: 'Unknown action' }), {
           status: 400,
