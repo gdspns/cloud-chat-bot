@@ -1,71 +1,136 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Navbar } from "@/components/Navbar";
-import { Bot, Trash2, Key, CheckCircle, XCircle, AlertTriangle } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Bot, Trash2, Key, CheckCircle, XCircle, AlertTriangle, WifiOff } from "lucide-react";
 import { AddBotDialog } from "@/components/AddBotDialog";
+import { User } from "@supabase/supabase-js";
 
 interface BotActivation {
   id: string;
   bot_token: string;
-  personal_user_id: string;
-  is_active: boolean;
-  is_authorized: boolean;
-  trial_messages_used: number;
-  trial_limit: number;
-  expire_at: string | null;
-  created_at: string;
+  personal_user_id?: string;
+  is_active?: boolean;
+  is_authorized?: boolean;
+  trial_messages_used?: number;
+  trial_limit?: number;
+  expire_at?: string | null;
+  created_at?: string;
+  web_enabled?: boolean;
+  app_enabled?: boolean;
+  user_id?: string | null;
 }
 
 export const UserCenter = () => {
+  const navigate = useNavigate();
+  const [user, setUser] = useState<User | null>(null);
   const [bots, setBots] = useState<BotActivation[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [showAddBot, setShowAddBot] = useState(false);
   const [bindingBotId, setBindingBotId] = useState<string | null>(null);
   const [activationCode, setActivationCode] = useState("");
   const [isBinding, setIsBinding] = useState(false);
   const { toast } = useToast();
 
+  // 检查用户登录状态
   useEffect(() => {
-    loadBots();
-  }, []);
+    const checkAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session?.user) {
+        toast({
+          title: "未登录",
+          description: "请先登录",
+          variant: "destructive",
+        });
+        navigate('/auth');
+        return;
+      }
+      
+      setUser(session.user);
+      setIsLoading(false);
+    };
+
+    checkAuth();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT') {
+        navigate('/auth');
+      } else if (session?.user) {
+        setUser(session.user);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [navigate, toast]);
+
+  // 加载用户的机器人
+  useEffect(() => {
+    if (user) {
+      loadBots();
+    }
+  }, [user]);
+
+  // 实时订阅机器人状态更新
+  useEffect(() => {
+    if (!user || bots.length === 0) return;
+
+    const channel = supabase
+      .channel('user-center-bots')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'bot_activations',
+          filter: `user_id=eq.${user.id}`
+        },
+        () => {
+          loadBots();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user, bots.length]);
 
   const loadBots = async () => {
-    setIsLoading(true);
+    if (!user) return;
+    
     try {
       const { data, error } = await supabase
         .from('bot_activations')
         .select('*')
-        .neq('bot_token', 'PENDING')
+        .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setBots(data || []);
+      setBots(data as BotActivation[]);
     } catch (error) {
       console.error('加载机器人列表失败:', error);
-    } finally {
-      setIsLoading(false);
     }
   };
 
   const handleDeleteBot = async (id: string) => {
     try {
-      const { data, error } = await supabase.functions.invoke('manage-bot', {
-        body: { action: 'delete', id }
+      const { error } = await supabase.functions.invoke('manage-bot', {
+        body: { action: 'delete', botId: id }
       });
       
       if (error) throw error;
-      if (!data.ok) throw new Error(data.error);
+      
+      setBots(prev => prev.filter(b => b.id !== id));
       
       toast({
         title: "删除成功",
         description: "机器人已从列表中移除",
       });
-      loadBots();
     } catch (error: any) {
       toast({
         title: "删除失败",
@@ -87,19 +152,16 @@ export const UserCenter = () => {
 
     setIsBinding(true);
     try {
-      const bot = bots.find(b => b.id === botId);
-      if (!bot) throw new Error('机器人不存在');
-
       const { data, error } = await supabase.functions.invoke('manage-bot', {
         body: { 
-          action: 'bind-existing',
-          activationCode: activationCode.trim(),
-          botId: botId
+          action: 'bind-code',
+          botId: botId,
+          code: activationCode.trim(),
         }
       });
       
       if (error) throw error;
-      if (!data.ok) throw new Error(data.error);
+      if (data.error) throw new Error(data.error);
       
       toast({
         title: "绑定成功",
@@ -107,7 +169,10 @@ export const UserCenter = () => {
       });
       setActivationCode("");
       setBindingBotId(null);
-      loadBots();
+      
+      if (data.bot) {
+        setBots(prev => prev.map(b => b.id === botId ? data.bot : b));
+      }
     } catch (error: any) {
       toast({
         title: "绑定失败",
@@ -117,6 +182,15 @@ export const UserCenter = () => {
     } finally {
       setIsBinding(false);
     }
+  };
+
+  const handleBotAdded = (newBot: BotActivation) => {
+    setBots(prev => [newBot, ...prev.filter(b => b.id !== newBot.id)]);
+    setShowAddBot(false);
+    toast({
+      title: "添加成功",
+      description: `机器人已添加，可免费试用 ${newBot.trial_limit} 条消息`,
+    });
   };
 
   const getStatusDisplay = (bot: BotActivation) => {
@@ -143,6 +217,14 @@ export const UserCenter = () => {
     return date.toLocaleDateString('zh-CN');
   };
 
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <p>加载中...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
@@ -156,13 +238,10 @@ export const UserCenter = () => {
           </Button>
         </div>
 
-        {/* 机器人列表 */}
         <Card className="p-6">
           <h2 className="text-lg font-semibold mb-4">我的机器人</h2>
           
-          {isLoading ? (
-            <p className="text-center text-muted-foreground py-8">加载中...</p>
-          ) : bots.length === 0 ? (
+          {bots.length === 0 ? (
             <div className="text-center py-8">
               <Bot className="h-12 w-12 mx-auto text-muted-foreground/30 mb-4" />
               <p className="text-muted-foreground">暂无机器人</p>
@@ -174,6 +253,7 @@ export const UserCenter = () => {
                 const status = getStatusDisplay(bot);
                 const isExpired = bot.expire_at && new Date(bot.expire_at) < new Date();
                 const trialExceeded = !bot.is_authorized && bot.trial_messages_used >= bot.trial_limit;
+                const webDisabled = !bot.web_enabled;
                 
                 return (
                   <Card key={bot.id} className={`p-4 ${isExpired || trialExceeded ? 'border-destructive/50' : ''}`}>
@@ -188,6 +268,12 @@ export const UserCenter = () => {
                             <CheckCircle className="h-4 w-4 text-green-500" />
                           ) : (
                             <XCircle className="h-4 w-4 text-yellow-500" />
+                          )}
+                          {webDisabled && (
+                            <span className="flex items-center gap-1 text-xs text-destructive">
+                              <WifiOff className="h-3 w-3" />
+                              Web端口已关闭
+                            </span>
                           )}
                           {!bot.is_authorized && (
                             <span className="text-xs text-muted-foreground">
@@ -218,7 +304,7 @@ export const UserCenter = () => {
                         </span>
                       </div>
                       
-                      {/* 过期提示 */}
+                      {/* 过期/试用满提示 */}
                       {(isExpired || trialExceeded) && (
                         <div className="flex items-center gap-2 p-2 bg-destructive/10 rounded text-sm">
                           <AlertTriangle className="h-4 w-4 text-destructive" />
@@ -228,7 +314,7 @@ export const UserCenter = () => {
                         </div>
                       )}
                       
-                      {/* 绑定激活码 - 未授权或已过期的机器人都可以绑定 */}
+                      {/* 绑定激活码 */}
                       {(!bot.is_authorized || isExpired) && (
                         <div className="pt-2 border-t">
                           {bindingBotId === bot.id ? (
@@ -282,7 +368,8 @@ export const UserCenter = () => {
       <AddBotDialog 
         open={showAddBot} 
         onOpenChange={setShowAddBot} 
-        onBotAdded={loadBots} 
+        onBotAdded={handleBotAdded}
+        userId={user?.id}
       />
     </div>
   );

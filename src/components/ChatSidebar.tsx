@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Plus, Bot, MessageCircle, User, Key, Trash2, Calendar } from "lucide-react";
+import { Plus, Bot, MessageCircle, User, Key, Trash2, Calendar, WifiOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -17,8 +17,9 @@ interface BotActivation {
   trial_messages_used: number;
   trial_limit: number;
   expire_at: string | null;
-  web_enabled?: boolean;
-  app_enabled?: boolean;
+  web_enabled: boolean;
+  app_enabled: boolean;
+  user_id: string | null;
 }
 
 interface ChatItem {
@@ -39,7 +40,7 @@ interface ChatSidebarProps {
   onSelectChat: (chatId: number) => void;
   onAddBot: () => void;
   onDeleteBot: (botId: string) => void;
-  onBotUpdated: () => void;
+  onBotUpdated: (bot: BotActivation) => void;
   unreadChats: Set<number>;
 }
 
@@ -90,14 +91,14 @@ export const ChatSidebar = ({
     try {
       const { data, error } = await supabase.functions.invoke('manage-bot', {
         body: { 
-          action: 'bind-existing',
-          activationCode: activationCode.trim(),
-          botId: botId
+          action: 'bind-code',
+          botId: botId,
+          code: activationCode.trim(),
         }
       });
       
       if (error) throw error;
-      if (!data.ok) throw new Error(data.error);
+      if (data.error) throw new Error(data.error);
       
       toast({
         title: "绑定成功",
@@ -105,7 +106,10 @@ export const ChatSidebar = ({
       });
       setActivationCode("");
       setBindingBotId(null);
-      onBotUpdated();
+      
+      if (data.bot) {
+        onBotUpdated(data.bot);
+      }
     } catch (error: any) {
       toast({
         title: "绑定失败",
@@ -125,6 +129,10 @@ export const ChatSidebar = ({
     return date.toLocaleDateString('zh-CN');
   };
 
+  // 获取选中的机器人
+  const selectedBot = bots.find(b => b.id === selectedBotId);
+  const isWebDisabled = selectedBot && !selectedBot.web_enabled;
+
   return (
     <div className="w-full md:w-80 border-r md:border-b-0 border-b bg-muted/30 flex flex-col h-[450px]">
       {/* 添加机器人按钮 */}
@@ -135,7 +143,7 @@ export const ChatSidebar = ({
         </Button>
       </div>
 
-      {/* 机器人列表 - 固定高度200px并可滚动 */}
+      {/* 机器人列表 */}
       <div className="p-3 border-b">
         <h3 className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1">
           <Bot className="h-3 w-3" />
@@ -154,8 +162,8 @@ export const ChatSidebar = ({
                 );
                 const isExpired = bot.expire_at && new Date(bot.expire_at) < new Date();
                 const trialExceeded = !bot.is_authorized && bot.trial_messages_used >= bot.trial_limit;
-                // 需要绑定激活码的情况：未授权 或 已过期
                 const needsActivation = !bot.is_authorized || isExpired;
+                const webDisabled = !bot.web_enabled;
                 
                 return (
                   <div key={bot.id} className="space-y-1">
@@ -165,7 +173,7 @@ export const ChatSidebar = ({
                         size="sm"
                         className={cn(
                           "flex-1 justify-start text-xs h-8",
-                          hasUnreadInBot && "animate-pulse ring-2 ring-primary"
+                          hasUnreadInBot && bot.web_enabled && "animate-pulse ring-2 ring-primary"
                         )}
                         onClick={() => onSelectBot(bot.id)}
                       >
@@ -173,6 +181,9 @@ export const ChatSidebar = ({
                         <span className="truncate text-[10px]">
                           {bot.bot_token.split(':')[0]}...
                         </span>
+                        {webDisabled && (
+                          <WifiOff className="h-3 w-3 ml-1 text-destructive" />
+                        )}
                         {!bot.is_authorized && (
                           <Badge variant="outline" className="ml-1 text-[8px] px-1 py-0">
                             试用
@@ -183,7 +194,7 @@ export const ChatSidebar = ({
                             过期
                           </Badge>
                         )}
-                        {bot.is_active && !isExpired && !trialExceeded && (
+                        {bot.is_active && !isExpired && !trialExceeded && bot.web_enabled && (
                           <span className="w-1.5 h-1.5 bg-green-500 rounded-full ml-1 shrink-0" />
                         )}
                       </Button>
@@ -207,7 +218,15 @@ export const ChatSidebar = ({
                       </span>
                     </div>
                     
-                    {/* 绑定激活码 - 未授权或已过期的机器人显示 */}
+                    {/* Web端口关闭提示 */}
+                    {webDisabled && (
+                      <div className="text-[10px] text-destructive px-2 flex items-center gap-1">
+                        <WifiOff className="h-3 w-3" />
+                        <span>Web端口已关闭</span>
+                      </div>
+                    )}
+                    
+                    {/* 绑定激活码 */}
                     {needsActivation && (
                       <div className="px-1">
                         {bindingBotId === bot.id ? (
@@ -260,15 +279,27 @@ export const ChatSidebar = ({
         </ScrollArea>
       </div>
 
-      {/* 聊天列表 - 固定高度并可滚动 */}
+      {/* 聊天列表 */}
       <div className="flex flex-col min-h-0 flex-1">
         <h3 className="text-xs font-semibold text-muted-foreground p-3 pb-2 flex items-center gap-1">
           <MessageCircle className="h-3 w-3" />
           聊天对话
+          {isWebDisabled && (
+            <Badge variant="destructive" className="ml-2 text-[8px]">
+              Web端口已关闭
+            </Badge>
+          )}
         </h3>
         <ScrollArea className="flex-1">
           <div className="p-2 pt-0 space-y-1">
-            {filteredChats.length === 0 ? (
+            {isWebDisabled ? (
+              <div className="text-center py-4">
+                <WifiOff className="h-6 w-6 mx-auto text-destructive/50 mb-2" />
+                <p className="text-xs text-destructive">
+                  Web端口已关闭，无法查看消息
+                </p>
+              </div>
+            ) : filteredChats.length === 0 ? (
               <div className="text-center py-4">
                 <User className="h-6 w-6 mx-auto text-muted-foreground/50 mb-2" />
                 <p className="text-xs text-muted-foreground">
