@@ -79,9 +79,30 @@ serve(async (req) => {
 
     const chatId = message.chat.id;
     const fromUser = message.from;
-    const text = message.text || '';
+    let text = message.text || message.caption || '';
     const messageId = message.message_id;
     const personalUserId = parseInt(activation.personal_user_id);
+
+    // 处理图片消息
+    let photoUrl = '';
+    let photoFileId = '';
+    if (message.photo && message.photo.length > 0) {
+      // 获取最大尺寸的图片
+      const largestPhoto = message.photo[message.photo.length - 1];
+      photoFileId = largestPhoto.file_id;
+      
+      // 获取文件路径
+      const fileResponse = await fetch(
+        `https://api.telegram.org/bot${botToken}/getFile?file_id=${photoFileId}`
+      );
+      const fileData = await fileResponse.json();
+      
+      if (fileData.ok && fileData.result.file_path) {
+        photoUrl = `https://api.telegram.org/file/bot${botToken}/${fileData.result.file_path}`;
+        text = `[图片] ${photoUrl}` + (text ? `\n${text}` : '');
+      }
+      console.log('Photo received:', { photoFileId, photoUrl });
+    }
 
     // Check if this is a reply from personal user to forward
     if (chatId === personalUserId && message.reply_to_message) {
@@ -104,21 +125,55 @@ serve(async (req) => {
         
         console.log(`Routing reply to chatId: ${targetChatId}, originalMsgId: ${originalMsgId}`);
         
-        // Send message to the original user (reply to their original message)
-        const sendResponse = await fetch(
-          `https://api.telegram.org/bot${botToken}/sendMessage`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              chat_id: targetChatId,
-              text: text,
-              reply_to_message_id: originalMsgId, // Reply to the original message for context
-            }),
+        let sendResult;
+        let messageContent = message.text || message.caption || '';
+        
+        // 检查是否是图片回复
+        if (message.photo && message.photo.length > 0) {
+          const replyPhotoFileId = message.photo[message.photo.length - 1].file_id;
+          const sendResponse = await fetch(
+            `https://api.telegram.org/bot${botToken}/sendPhoto`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                chat_id: targetChatId,
+                photo: replyPhotoFileId,
+                caption: messageContent,
+                reply_to_message_id: originalMsgId,
+              }),
+            }
+          );
+          sendResult = await sendResponse.json();
+          
+          // 获取图片URL用于存储
+          const fileResponse = await fetch(
+            `https://api.telegram.org/bot${botToken}/getFile?file_id=${replyPhotoFileId}`
+          );
+          const fileData = await fileResponse.json();
+          if (fileData.ok && fileData.result.file_path) {
+            const replyPhotoUrl = `https://api.telegram.org/file/bot${botToken}/${fileData.result.file_path}`;
+            messageContent = `[图片] ${replyPhotoUrl}` + (messageContent ? `\n${messageContent}` : '');
+          } else {
+            messageContent = `[图片]` + (messageContent ? `\n${messageContent}` : '');
           }
-        );
+        } else {
+          // 发送文本回复
+          const sendResponse = await fetch(
+            `https://api.telegram.org/bot${botToken}/sendMessage`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                chat_id: targetChatId,
+                text: messageContent,
+                reply_to_message_id: originalMsgId,
+              }),
+            }
+          );
+          sendResult = await sendResponse.json();
+        }
 
-        const sendResult = await sendResponse.json();
         console.log('Reply sent result:', JSON.stringify(sendResult, null, 2));
 
         if (sendResult.ok) {
@@ -128,7 +183,7 @@ serve(async (req) => {
             telegram_chat_id: targetChatId,
             telegram_message_id: sendResult.result?.message_id,
             telegram_user_name: '我',
-            content: text,
+            content: messageContent,
             direction: 'outgoing',
           });
         }
@@ -194,16 +249,30 @@ serve(async (req) => {
       }
 
       // Forward message to personal user
-      const forwardText = `📨 新消息\n来自: ${userName}\n[CHATID:${chatId}:MSGID:${messageId}]\n\n${text}`;
-      
-      await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chat_id: personalUserId,
-          text: forwardText,
-        }),
-      });
+      if (photoFileId) {
+        // 转发图片消息
+        const forwardCaption = `📨 新消息\n来自: ${userName}\n[CHATID:${chatId}:MSGID:${messageId}]\n\n${message.caption || ''}`;
+        await fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: personalUserId,
+            photo: photoFileId,
+            caption: forwardCaption,
+          }),
+        });
+      } else {
+        // 转发文本消息
+        const forwardText = `📨 新消息\n来自: ${userName}\n[CHATID:${chatId}:MSGID:${messageId}]\n\n${text}`;
+        await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: personalUserId,
+            text: forwardText,
+          }),
+        });
+      }
     } else {
       console.log('App port disabled - message stored but not forwarded');
     }

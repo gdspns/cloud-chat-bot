@@ -16,11 +16,11 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { activationId, chatId, message, photoFileId } = await req.json();
+    const { activationId, chatId, message, photoFileId, photoBase64 } = await req.json();
     
-    console.log('Sending message:', { activationId, chatId, message: message?.substring(0, 50), hasPhoto: !!photoFileId });
+    console.log('Sending message:', { activationId, chatId, message: message?.substring(0, 50), hasPhoto: !!photoFileId, hasBase64: !!photoBase64 });
 
-    if (!activationId || !chatId || (!message && !photoFileId)) {
+    if (!activationId || !chatId || (!message && !photoFileId && !photoBase64)) {
       return new Response(JSON.stringify({ error: 'Missing required fields' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -67,10 +67,31 @@ serve(async (req) => {
 
     // 发送消息
     let sendResult;
-    let messageContent = message;
+    let messageContent = message || '';
 
-    if (photoFileId) {
-      // 发送图片
+    if (photoBase64) {
+      // 从 base64 发送图片
+      const base64Data = photoBase64.replace(/^data:image\/\w+;base64,/, '');
+      const binaryData = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+      
+      const formData = new FormData();
+      formData.append('chat_id', chatId.toString());
+      formData.append('photo', new Blob([binaryData], { type: 'image/jpeg' }), 'photo.jpg');
+      if (message) {
+        formData.append('caption', message);
+      }
+      
+      const sendResponse = await fetch(
+        `https://api.telegram.org/bot${activation.bot_token}/sendPhoto`,
+        {
+          method: 'POST',
+          body: formData,
+        }
+      );
+      sendResult = await sendResponse.json();
+      messageContent = message ? `[图片] ${message}` : '[图片]';
+    } else if (photoFileId) {
+      // 发送图片（通过 file_id）
       const sendResponse = await fetch(
         `https://api.telegram.org/bot${activation.bot_token}/sendPhoto`,
         {
