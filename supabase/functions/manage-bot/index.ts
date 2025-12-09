@@ -17,11 +17,10 @@ const ADMIN_ACTIONS = [
   'toggle-user-disabled',
   'list-disabled-users',
   'list',
-  'delete',
+  'admin-delete', // 管理员删除
   'toggle',
   'extend',
   'toggle-port',
-  // 'bind-existing' 和 'bind-code' 移除，允许普通用户绑定激活码
   'cleanup-expired-trials',
 ];
 
@@ -599,8 +598,85 @@ serve(async (req) => {
         });
       }
 
-      // 删除机器人
+      // 用户删除自己的机器人
       case 'delete': {
+        // 兼容 id 和 botId 两种参数名
+        const botId = params.id || params.botId;
+        
+        if (!botId) {
+          return new Response(JSON.stringify({ ok: false, error: '缺少机器人ID' }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+        
+        const { data: bot, error: fetchError } = await supabase
+          .from('bot_activations')
+          .select('bot_token, user_id')
+          .eq('id', botId)
+          .single();
+
+        if (fetchError) {
+          return new Response(JSON.stringify({ ok: false, error: fetchError.message }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // 验证用户权限 - 只能删除自己的机器人或游客机器人
+        const authHeader = req.headers.get('Authorization');
+        if (authHeader) {
+          const token = authHeader.replace('Bearer ', '');
+          const { data: { user } } = await supabase.auth.getUser(token);
+          
+          // 如果机器人有用户ID且不是当前用户，拒绝删除
+          if (bot.user_id && user && bot.user_id !== user.id) {
+            // 检查是否是管理员
+            const { data: isAdmin } = await supabase.rpc('has_role', {
+              _user_id: user.id,
+              _role: 'admin'
+            });
+            
+            if (!isAdmin) {
+              return new Response(JSON.stringify({ ok: false, error: '无权删除此机器人' }), {
+                status: 403,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+              });
+            }
+          }
+        }
+
+        // 删除相关消息
+        await supabase
+          .from('messages')
+          .delete()
+          .eq('bot_activation_id', botId);
+
+        // 删除机器人
+        const { error } = await supabase
+          .from('bot_activations')
+          .delete()
+          .eq('id', botId);
+
+        if (error) {
+          return new Response(JSON.stringify({ ok: false, error: error.message }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // 删除webhook
+        await fetch(`https://api.telegram.org/bot${bot.bot_token}/deleteWebhook`, {
+          method: 'POST',
+        });
+
+        return new Response(JSON.stringify({ ok: true }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      
+      // 管理员删除机器人 (旧版兼容)
+      case 'admin-delete': {
         const { id } = params;
         
         const { data: bot, error: fetchError } = await supabase
