@@ -170,28 +170,39 @@ const Index = () => {
   // 同步游客机器人到用户账户
   const syncGuestBotsToUser = async (currentUser: User): Promise<BotActivation[]> => {
     const guestBotIds = localStorage.getItem('guestBotIds');
+    console.log('syncGuestBotsToUser - guestBotIds from localStorage:', guestBotIds);
     if (!guestBotIds) return [];
     
     const ids = JSON.parse(guestBotIds);
+    console.log('syncGuestBotsToUser - parsed ids:', ids);
     if (ids.length === 0) return [];
     
     try {
-      // 将游客机器人绑定到用户
-      const { data, error } = await (supabase
-        .from('bot_activations') as any)
-        .update({ user_id: currentUser.id })
-        .in('id', ids)
-        .is('user_id', null)
-        .select('*');
+      // 逐个更新机器人，避免批量更新的潜在问题
+      const syncedBots: BotActivation[] = [];
       
-      localStorage.removeItem('guestBotIds');
-      
-      if (error) {
-        console.error('同步游客机器人失败:', error);
-        return [];
+      for (const botId of ids) {
+        console.log('syncGuestBotsToUser - updating bot:', botId, 'to user:', currentUser.id);
+        const { data, error } = await supabase
+          .from('bot_activations')
+          .update({ user_id: currentUser.id })
+          .eq('id', botId)
+          .is('user_id', null)
+          .select('*')
+          .single();
+        
+        if (error) {
+          console.error('同步机器人失败:', botId, error);
+        } else if (data) {
+          console.log('syncGuestBotsToUser - synced bot:', data);
+          syncedBots.push(data as BotActivation);
+        }
       }
       
-      return (data || []) as BotActivation[];
+      localStorage.removeItem('guestBotIds');
+      console.log('syncGuestBotsToUser - total synced:', syncedBots.length);
+      
+      return syncedBots;
     } catch (error) {
       console.error('同步游客机器人失败:', error);
       return [];
