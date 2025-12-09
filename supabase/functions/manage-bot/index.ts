@@ -55,9 +55,10 @@ serve(async (req) => {
         });
       }
 
-      // 用户创建试用机器人
+      // 用户添加机器人（前端使用 add，兼容 create-trial）
+      case 'add':
       case 'create-trial': {
-        const { botToken, personalUserId, greetingMessage } = params;
+        const { botToken, personalUserId, greetingMessage, userId } = params;
         
         // 检查试用记录 - 该令牌的历史使用情况
         const { data: trialRecord } = await supabase
@@ -96,6 +97,7 @@ serve(async (req) => {
               expire_at: trialRecord.last_authorized_expire_at,
               trial_limit: 20,
               trial_messages_used: 0,
+              user_id: userId || null,
             })
             .select()
             .single();
@@ -140,6 +142,7 @@ serve(async (req) => {
             is_authorized: false,
             trial_limit: 20,
             trial_messages_used: messagesUsed, // 恢复累计使用量
+            user_id: userId || null,
           })
           .select()
           .single();
