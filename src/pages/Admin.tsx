@@ -881,6 +881,12 @@ export const Admin = () => {
                                 <div>
                                   <span className="font-medium">过期日期:</span> {activation.expire_at ? new Date(activation.expire_at).toLocaleDateString('zh-CN') : '无'}
                                 </div>
+                                <div className="md:col-span-2">
+                                  <span className="font-medium">所属用户:</span>{' '}
+                                  <span className="text-blue-600 dark:text-blue-400">
+                                    {activation.user_email || (activation.user_id ? `ID: ${activation.user_id.substring(0, 8)}...` : '游客/未绑定')}
+                                  </span>
+                                </div>
                               </div>
                               
                               {/* 显示用户绑定的激活码 */}
