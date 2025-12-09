@@ -63,10 +63,10 @@ export const UserCenter = () => {
 
   // 实时订阅机器人状态更新
   useEffect(() => {
-    if (!user || bots.length === 0) return;
+    if (!user) return;
 
     const channel = supabase
-      .channel('user-center-bots')
+      .channel('user-center-bots-realtime')
       .on(
         'postgres_changes',
         {
@@ -75,8 +75,20 @@ export const UserCenter = () => {
           table: 'bot_activations',
           filter: `user_id=eq.${user.id}`
         },
-        () => {
-          loadBots();
+        (payload) => {
+          if (payload.eventType === 'INSERT') {
+            const newBot = payload.new as unknown as BotActivation;
+            setBots(prev => {
+              if (prev.find(b => b.id === newBot.id)) return prev;
+              return [newBot, ...prev];
+            });
+          } else if (payload.eventType === 'UPDATE') {
+            const updatedBot = payload.new as unknown as BotActivation;
+            setBots(prev => prev.map(b => b.id === updatedBot.id ? updatedBot : b));
+          } else if (payload.eventType === 'DELETE') {
+            const deletedBot = payload.old as unknown as BotActivation;
+            setBots(prev => prev.filter(b => b.id !== deletedBot.id));
+          }
         }
       )
       .subscribe();
@@ -84,7 +96,7 @@ export const UserCenter = () => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user, bots.length]);
+  }, [user]);
 
   const loadBots = async () => {
     if (!user) return;
