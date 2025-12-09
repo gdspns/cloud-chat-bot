@@ -573,10 +573,17 @@ const Index = () => {
     );
   })();
 
+  // 认证加载时显示完整骨架屏，避免白屏
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <p>加载中...</p>
+      <div className="min-h-screen bg-background flex flex-col animate-in fade-in duration-200">
+        <Navbar />
+        <div className="flex-1 flex items-center justify-center">
+          <div className="flex flex-col items-center gap-4">
+            <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+            <p className="text-muted-foreground text-sm">正在加载...</p>
+          </div>
+        </div>
       </div>
     );
   }
