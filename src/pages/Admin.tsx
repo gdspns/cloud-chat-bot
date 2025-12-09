@@ -1209,22 +1209,45 @@ export const Admin = () => {
                                 : 'bg-primary/20 ml-auto'
                             }`}
                           >
-                            {msg.content.startsWith('[图片]') ? (
-                              <div 
-                                className="cursor-pointer"
-                                onClick={() => {
-                                  const url = msg.content.match(/\((.*?)\)/)?.[1];
-                                  if (url && !url.includes('已过期')) {
-                                    setPreviewImage(url);
-                                  }
-                                }}
-                              >
-                                <div className="flex items-center gap-2 text-muted-foreground">
-                                  <ImageIcon className="h-4 w-4" />
-                                  <span>图片消息</span>
-                                  <ZoomIn className="h-4 w-4" />
-                                </div>
-                              </div>
+                          {msg.content.startsWith('[图片]') ? (
+                              (() => {
+                                // 支持两种格式: "[图片] url" 或 "[图片](url)"
+                                const urlMatch = msg.content.match(/\[图片\]\s*(?:\((.+?)\)|(.+))$/);
+                                const imageUrl = urlMatch?.[1] || urlMatch?.[2]?.trim();
+                                const isExpired = !imageUrl || imageUrl.includes('已过期');
+                                const bot = activations.find(a => a.id === msg.bot_activation_id);
+                                const proxyUrl = imageUrl && !isExpired && bot
+                                  ? `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-telegram-image?url=${encodeURIComponent(imageUrl)}&botId=${bot.id}`
+                                  : null;
+                                
+                                return (
+                                  <div 
+                                    className={isExpired ? "" : "cursor-pointer"}
+                                    onClick={() => {
+                                      if (proxyUrl) {
+                                        setPreviewImage(proxyUrl);
+                                      }
+                                    }}
+                                  >
+                                    {proxyUrl ? (
+                                      <img 
+                                        src={proxyUrl} 
+                                        alt="图片消息" 
+                                        className="max-w-[200px] max-h-[150px] rounded object-cover"
+                                        onError={(e) => {
+                                          e.currentTarget.style.display = 'none';
+                                          e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                                        }}
+                                      />
+                                    ) : null}
+                                    <div className={`flex items-center gap-2 text-muted-foreground ${proxyUrl ? 'hidden' : ''}`}>
+                                      <ImageIcon className="h-4 w-4" />
+                                      <span>{isExpired ? '图片已过期' : '图片消息'}</span>
+                                      {!isExpired && <ZoomIn className="h-4 w-4" />}
+                                    </div>
+                                  </div>
+                                );
+                              })()
                             ) : (
                               <div className="whitespace-pre-wrap">{msg.content}</div>
                             )}
