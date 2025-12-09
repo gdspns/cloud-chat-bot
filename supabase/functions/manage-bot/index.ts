@@ -605,7 +605,28 @@ serve(async (req) => {
           });
         }
 
-        return new Response(JSON.stringify({ ok: true, data }), {
+        // 获取用户邮箱信息
+        const userIds = [...new Set(data?.filter(b => b.user_id).map(b => b.user_id) || [])];
+        const userEmails: Record<string, string> = {};
+        
+        if (userIds.length > 0) {
+          const { data: users } = await supabase.auth.admin.listUsers();
+          if (users?.users) {
+            for (const user of users.users) {
+              if (userIds.includes(user.id)) {
+                userEmails[user.id] = user.email || '';
+              }
+            }
+          }
+        }
+
+        // 添加用户邮箱到机器人数据
+        const dataWithEmail = data?.map(bot => ({
+          ...bot,
+          user_email: bot.user_id ? userEmails[bot.user_id] || null : null
+        }));
+
+        return new Response(JSON.stringify({ ok: true, data: dataWithEmail }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }

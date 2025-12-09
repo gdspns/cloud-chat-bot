@@ -26,6 +26,8 @@ interface BotActivation {
   created_at: string;
   web_enabled?: boolean;
   app_enabled?: boolean;
+  user_id?: string;
+  user_email?: string;
 }
 
 interface ActivationCode {
@@ -911,6 +913,16 @@ export const Admin = () => {
                             <div className="text-xs text-muted-foreground truncate">
                               Bot: {bot?.bot_token.substring(0, 10)}...
                             </div>
+                            {bot?.user_email && (
+                              <div className="text-xs text-blue-600 dark:text-blue-400 truncate">
+                                用户: {bot.user_email}
+                              </div>
+                            )}
+                            {bot?.user_id && !bot?.user_email && (
+                              <div className="text-xs text-blue-600 dark:text-blue-400 truncate">
+                                用户ID: {bot.user_id.substring(0, 8)}...
+                              </div>
+                            )}
                             <div className="text-xs text-muted-foreground truncate mt-1">
                               {chat.lastMessage.content.substring(0, 30)}...
                             </div>
