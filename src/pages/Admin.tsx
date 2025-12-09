@@ -153,7 +153,45 @@ export const Admin = () => {
     loadAllMessages();
     loadDisabledUsers();
     
-    // 移除自动刷新，改为手动刷新
+    // 设置消息实时订阅 - 自动刷新聊天监控
+    const messagesChannel = supabase
+      .channel('admin-messages-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'messages'
+        },
+        (payload) => {
+          console.log('Admin: New message received', payload);
+          // 收到新消息时自动刷新消息列表
+          loadAllMessages();
+        }
+      )
+      .subscribe();
+
+    // 设置机器人状态实时订阅
+    const botsChannel = supabase
+      .channel('admin-bots-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'bot_activations'
+        },
+        (payload) => {
+          console.log('Admin: Bot status changed', payload);
+          loadActivations();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(messagesChannel);
+      supabase.removeChannel(botsChannel);
+    };
   }, [isAdmin, session]);
   
   // 手动刷新数据
@@ -184,12 +222,13 @@ export const Admin = () => {
 
   // 只滚动消息容器内部，不滚动整个页面
   useEffect(() => {
-    if (messagesEndRef.current) {
-      const container = messagesEndRef.current.parentElement;
-      if (container) {
-        container.scrollTop = container.scrollHeight;
+    // 使用setTimeout确保DOM更新后再滚动
+    const timer = setTimeout(() => {
+      if (messagesEndRef.current) {
+        messagesEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
       }
-    }
+    }, 100);
+    return () => clearTimeout(timer);
   }, [allMessages, selectedChatId]);
 
   const handleSessionExpired = async () => {
