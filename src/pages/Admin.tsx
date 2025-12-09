@@ -3,7 +3,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { Trash2, Play, Pause, Calendar, Copy, CheckCircle, XCircle, Key, Globe, Smartphone, List, MessageSquare, Send, LayoutDashboard, Users, Bot, Image as ImageIcon, ChevronDown, ChevronUp, X, ZoomIn, Loader2 } from "lucide-react";
+import { Trash2, Play, Pause, Calendar, Copy, CheckCircle, XCircle, Key, Globe, Smartphone, List, MessageSquare, Send, LayoutDashboard, Users, Bot, Image as ImageIcon, ChevronDown, ChevronUp, X, ZoomIn, Loader2, Database } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useAuth } from "@/hooks/use-auth";
+import { DataExportImport } from "@/components/DataExportImport";
 
 interface BotActivation {
   id: string;
@@ -102,6 +103,9 @@ export const Admin = () => {
   
   // 图片预览相关
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  
+  // 数据导出导入对话框
+  const [showDataExportImport, setShowDataExportImport] = useState(false);
   
   const { toast } = useToast();
 
@@ -767,8 +771,12 @@ export const Admin = () => {
       <div className="container mx-auto max-w-7xl">
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-3xl font-bold">Telegram机器人授权管理</h1>
-          <div className="flex gap-2 items-center">
+          <div className="flex gap-2 items-center flex-wrap">
             <span className="text-sm text-muted-foreground">{user.email}</span>
+            <Button variant="outline" onClick={() => setShowDataExportImport(true)}>
+              <Database className="h-4 w-4 mr-2" />
+              数据管理
+            </Button>
             <Button variant="outline" onClick={() => setShowCodeList(true)}>
               <List className="h-4 w-4 mr-2" />
               激活码列表
@@ -1368,6 +1376,17 @@ export const Admin = () => {
             )}
           </DialogContent>
         </Dialog>
+
+        {/* 数据导出导入对话框 */}
+        <DataExportImport
+          open={showDataExportImport}
+          onOpenChange={setShowDataExportImport}
+          onDataImported={() => {
+            loadActivations();
+            loadAllCodes();
+            loadAllMessages();
+          }}
+        />
       </div>
     </div>
   );
