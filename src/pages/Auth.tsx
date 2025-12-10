@@ -8,37 +8,32 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Navbar } from "@/components/Navbar";
-import { Bot, Mail, Lock } from "lucide-react";
+import { Bot, Mail, Lock, Loader2 } from "lucide-react";
+import { useAuth } from "@/hooks/use-auth";
 
 const Auth = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
+  const { user, isLoading: authLoading, isInitialized } = useAuth();
   const [activeTab, setActiveTab] = useState(searchParams.get('mode') || 'login');
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isRedirecting, setIsRedirecting] = useState(false);
 
+  // 使用 isInitialized 确保认证状态已初始化后再检查
   useEffect(() => {
-    // 监听认证状态变化 - 使用 replace 避免历史记录堆叠
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (session) {
-        // 使用 setTimeout 延迟导航，避免状态更新冲突
-        setTimeout(() => {
-          navigate('/', { replace: true });
-        }, 0);
-      }
-    });
-
-    // 检查是否已登录
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
+    if (!isInitialized) return;
+    
+    if (user) {
+      setIsRedirecting(true);
+      // 使用 requestAnimationFrame 确保状态更新后再导航
+      requestAnimationFrame(() => {
         navigate('/', { replace: true });
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, [navigate]);
+      });
+    }
+  }, [user, isInitialized, navigate]);
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -126,11 +121,26 @@ const Auth = () => {
     }
   };
 
+  // 认证检查中或正在重定向时显示加载状态
+  if (authLoading || isRedirecting) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col">
+        <Navbar />
+        <div className="flex-1 flex items-center justify-center">
+          <div className="flex flex-col items-center gap-4">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <p className="text-muted-foreground">{isRedirecting ? '正在跳转...' : '加载中...'}</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background flex flex-col">
       <Navbar />
       
-      <div className="container mx-auto px-4 py-16 flex items-center justify-center">
+      <div className="flex-1 container mx-auto px-4 py-16 flex items-center justify-center">
         <Card className="w-full max-w-md p-8">
           <div className="flex items-center justify-center mb-6">
             <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">

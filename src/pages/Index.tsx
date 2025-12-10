@@ -11,7 +11,7 @@ import type { BotActivation, Message, ChatItem } from "@/types/bot";
 
 const Index = () => {
   const { toast } = useToast();
-  const { user, isLoading: authLoading } = useAuth();
+  const { user, isLoading: authLoading, isInitialized } = useAuth();
   const [bots, setBots] = useState<BotActivation[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [selectedBotId, setSelectedBotId] = useState<string | null>(null);
@@ -579,14 +579,14 @@ const Index = () => {
   })();
 
   // 认证加载时显示完整骨架屏，避免白屏
-  if (authLoading) {
+  if (!isInitialized || authLoading) {
     return (
       <div className="min-h-screen bg-background flex flex-col">
         <Navbar />
-        <div className="flex-1 flex flex-col md:flex-row overflow-auto p-4 gap-4">
+        <main className="flex-1 flex flex-col md:flex-row overflow-auto p-4 gap-4">
           <ChatSidebarSkeleton />
           <ChatWindowSkeleton />
-        </div>
+        </main>
       </div>
     );
   }

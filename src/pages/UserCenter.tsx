@@ -13,7 +13,7 @@ import type { BotActivation } from "@/types/bot";
 
 export const UserCenter = () => {
   const navigate = useNavigate();
-  const { user, isLoading: authLoading } = useAuth();
+  const { user, isLoading: authLoading, isInitialized } = useAuth();
   const [bots, setBots] = useState<BotActivation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showAddBot, setShowAddBot] = useState(false);
@@ -23,16 +23,16 @@ export const UserCenter = () => {
   const [isUserDisabled, setIsUserDisabled] = useState(false);
   const { toast } = useToast();
 
-  // 检查用户登录状态 - 快速响应
+  // 检查用户登录状态 - 等待初始化完成
   useEffect(() => {
-    if (authLoading) return;
+    if (!isInitialized) return;
     
     if (!user) {
       navigate('/auth', { replace: true });
     } else {
       setIsLoading(false);
     }
-  }, [user, authLoading, navigate]);
+  }, [user, isInitialized, navigate]);
 
   // 加载用户的机器人和禁用状态
   useEffect(() => {
@@ -236,7 +236,7 @@ export const UserCenter = () => {
   };
 
   // 显示骨架屏避免白屏 - 优化加载体验
-  if (authLoading) {
+  if (!isInitialized || authLoading) {
     return (
       <div className="min-h-screen bg-background flex flex-col">
         <Navbar />
