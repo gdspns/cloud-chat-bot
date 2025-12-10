@@ -34,6 +34,7 @@ export const ChatWindow = ({
   const [isSending, setIsSending] = useState(false);
   const [showTrialDialog, setShowTrialDialog] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -137,8 +138,8 @@ export const ChatWindow = ({
             <img 
               src={proxyUrl} 
               alt="图片" 
-              className="max-w-full rounded-lg max-h-48 object-contain cursor-pointer"
-              onClick={() => window.open(proxyUrl, '_blank')}
+              className="max-w-full rounded-lg max-h-48 object-contain cursor-pointer hover:opacity-90 transition-opacity"
+              onClick={() => setPreviewImage(proxyUrl)}
               onError={(e) => {
                 const img = e.target as HTMLImageElement;
                 img.style.display = 'none';
@@ -411,12 +412,27 @@ export const ChatWindow = ({
             <Button variant="outline" onClick={() => setShowTrialDialog(false)}>
               稍后再说
             </Button>
-            <Button onClick={() => setShowTrialDialog(false)}>
-              去绑定激活码
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          <Button onClick={() => setShowTrialDialog(false)}>
+            去绑定激活码
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    {/* 图片放大预览对话框 */}
+    <Dialog open={!!previewImage} onOpenChange={() => setPreviewImage(null)}>
+      <DialogContent className="max-w-[90vw] max-h-[90vh] p-2 bg-background/95 backdrop-blur">
+        <div className="flex items-center justify-center w-full h-full">
+          {previewImage && (
+            <img 
+              src={previewImage} 
+              alt="放大预览" 
+              className="max-w-full max-h-[80vh] object-contain rounded-lg"
+            />
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
     </div>
   );
 };
