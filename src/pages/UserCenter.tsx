@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Navbar } from "@/components/Navbar";
+import { NavbarSkeleton } from "@/components/ChatSkeleton";
 import { Bot, Trash2, Key, CheckCircle, XCircle, AlertTriangle, WifiOff } from "lucide-react";
 import { AddBotDialog } from "@/components/AddBotDialog";
 import { useAuth } from "@/hooks/use-auth";
@@ -239,7 +240,7 @@ export const UserCenter = () => {
   if (!isInitialized || authLoading) {
     return (
       <div className="min-h-screen bg-background flex flex-col">
-        <Navbar />
+        <NavbarSkeleton />
         <div className="container mx-auto max-w-4xl p-6 animate-pulse">
           <div className="flex justify-between items-center mb-6">
             <div className="h-8 w-32 bg-muted rounded" />

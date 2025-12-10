@@ -1,4 +1,27 @@
 import { Skeleton } from "@/components/ui/skeleton";
+import { Bot, Home } from "lucide-react";
+
+// 导航栏骨架屏
+export const NavbarSkeleton = () => {
+  return (
+    <nav className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
+      <div className="container mx-auto px-4 h-14 flex items-center justify-between">
+        <div className="flex items-center gap-2 font-bold text-lg">
+          <Bot className="h-6 w-6 text-primary" />
+          <span>TG机器人管理</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 px-3 py-1.5 rounded-md bg-primary text-primary-foreground">
+            <Home className="h-4 w-4" />
+            <span className="text-sm">首页</span>
+          </div>
+          <Skeleton className="h-8 w-16" />
+          <Skeleton className="h-8 w-16" />
+        </div>
+      </div>
+    </nav>
+  );
+};
 
 export const ChatSidebarSkeleton = () => {
   return (
@@ -118,4 +141,4 @@ export const MessageListSkeleton = () => {
   );
 };
 
-export default { ChatSidebarSkeleton, ChatWindowSkeleton, MessageListSkeleton };
+export default { NavbarSkeleton, ChatSidebarSkeleton, ChatWindowSkeleton, MessageListSkeleton };

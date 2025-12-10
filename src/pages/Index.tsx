@@ -3,7 +3,7 @@ import { Navbar } from "@/components/Navbar";
 import { ChatSidebar } from "@/components/ChatSidebar";
 import { ChatWindow } from "@/components/ChatWindow";
 import { AddBotDialog } from "@/components/AddBotDialog";
-import { ChatSidebarSkeleton, ChatWindowSkeleton } from "@/components/ChatSkeleton";
+import { NavbarSkeleton, ChatSidebarSkeleton, ChatWindowSkeleton } from "@/components/ChatSkeleton";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
@@ -582,7 +582,7 @@ const Index = () => {
   if (!isInitialized || authLoading) {
     return (
       <div className="min-h-screen bg-background flex flex-col">
-        <Navbar />
+        <NavbarSkeleton />
         <main className="flex-1 flex flex-col md:flex-row overflow-auto p-4 gap-4">
           <ChatSidebarSkeleton />
           <ChatWindowSkeleton />
