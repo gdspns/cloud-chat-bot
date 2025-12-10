@@ -581,7 +581,7 @@ const Index = () => {
   // 认证加载时显示完整骨架屏，避免白屏
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-background flex flex-col animate-in fade-in duration-200">
+      <div className="min-h-screen bg-background flex flex-col">
         <Navbar />
         <div className="flex-1 flex flex-col md:flex-row overflow-auto p-4 gap-4">
           <ChatSidebarSkeleton />
@@ -595,7 +595,7 @@ const Index = () => {
     <div className="min-h-screen bg-background flex flex-col">
       <Navbar />
       
-      <div className="flex-1 flex flex-col md:flex-row overflow-auto p-4 gap-4 content-fade-in">
+      <main className="flex-1 flex flex-col md:flex-row overflow-auto p-4 gap-4">
         {isDataLoading ? (
           <>
             <ChatSidebarSkeleton />
@@ -629,7 +629,7 @@ const Index = () => {
             />
           </>
         )}
-      </div>
+      </main>
 
       {/* 网站介绍 */}
       <div className="border-t bg-muted/30">

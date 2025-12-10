@@ -23,16 +23,15 @@ export const UserCenter = () => {
   const [isUserDisabled, setIsUserDisabled] = useState(false);
   const { toast } = useToast();
 
-  // 检查用户登录状态 - 移除 toast 避免闪烁
+  // 检查用户登录状态 - 快速响应
   useEffect(() => {
     if (authLoading) return;
     
     if (!user) {
       navigate('/auth', { replace: true });
-      return;
+    } else {
+      setIsLoading(false);
     }
-    
-    setIsLoading(false);
   }, [user, authLoading, navigate]);
 
   // 加载用户的机器人和禁用状态
@@ -236,16 +235,42 @@ export const UserCenter = () => {
     return date.toLocaleDateString('zh-CN');
   };
 
-  // 显示骨架屏避免白屏
-  if (authLoading || isLoading) {
+  // 显示骨架屏避免白屏 - 优化加载体验
+  if (authLoading) {
     return (
-      <div className="min-h-screen bg-background flex flex-col animate-in fade-in duration-200">
+      <div className="min-h-screen bg-background flex flex-col">
+        <Navbar />
+        <div className="container mx-auto max-w-4xl p-6 animate-pulse">
+          <div className="flex justify-between items-center mb-6">
+            <div className="h-8 w-32 bg-muted rounded" />
+            <div className="h-10 w-28 bg-muted rounded" />
+          </div>
+          <div className="bg-card rounded-lg border p-6">
+            <div className="h-6 w-24 bg-muted rounded mb-4" />
+            <div className="space-y-4">
+              {[1, 2].map(i => (
+                <div key={i} className="p-4 border rounded-lg space-y-3">
+                  <div className="flex justify-between">
+                    <div className="h-6 w-20 bg-muted rounded" />
+                    <div className="h-8 w-8 bg-muted rounded" />
+                  </div>
+                  <div className="h-4 w-48 bg-muted rounded" />
+                  <div className="h-4 w-32 bg-muted rounded" />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col">
         <Navbar />
         <div className="flex-1 flex items-center justify-center">
-          <div className="flex flex-col items-center gap-4">
-            <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-            <p className="text-muted-foreground text-sm">正在加载...</p>
-          </div>
+          <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
         </div>
       </div>
     );
