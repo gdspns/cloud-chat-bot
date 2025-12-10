@@ -3,7 +3,6 @@ import { Navbar } from "@/components/Navbar";
 import { ChatSidebar } from "@/components/ChatSidebar";
 import { ChatWindow } from "@/components/ChatWindow";
 import { AddBotDialog } from "@/components/AddBotDialog";
-import { NavbarSkeleton, ChatSidebarSkeleton, ChatWindowSkeleton } from "@/components/ChatSkeleton";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
@@ -11,7 +10,7 @@ import type { BotActivation, Message, ChatItem } from "@/types/bot";
 
 const Index = () => {
   const { toast } = useToast();
-  const { user, isLoading: authLoading, isInitialized } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
   const [bots, setBots] = useState<BotActivation[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [selectedBotId, setSelectedBotId] = useState<string | null>(null);
@@ -21,7 +20,6 @@ const Index = () => {
   const [enableSound, setEnableSound] = useState(true);
   const [soundType, setSoundType] = useState("qq");
   const [isUserDisabled, setIsUserDisabled] = useState(false);
-  const [isDataLoading, setIsDataLoading] = useState(true);
   const hasSyncedRef = useRef(false);
   const prevUserIdRef = useRef<string | null>(null);
 
@@ -83,7 +81,6 @@ const Index = () => {
 
   // 加载机器人列表
   const loadBots = useCallback(async (currentUserId: string | null) => {
-    setIsDataLoading(true);
     try {
       if (currentUserId) {
         const { data, error } = await (supabase
@@ -117,8 +114,6 @@ const Index = () => {
       }
     } catch (error) {
       console.error('加载机器人失败:', error);
-    } finally {
-      setIsDataLoading(false);
     }
   }, []);
 
@@ -579,14 +574,16 @@ const Index = () => {
   })();
 
   // 认证加载时显示完整骨架屏，避免白屏
-  if (!isInitialized || authLoading) {
+  if (authLoading) {
     return (
-      <div className="min-h-screen bg-background flex flex-col">
-        <NavbarSkeleton />
-        <main className="flex-1 flex flex-col md:flex-row overflow-auto p-4 gap-4">
-          <ChatSidebarSkeleton />
-          <ChatWindowSkeleton />
-        </main>
+      <div className="min-h-screen bg-background flex flex-col animate-in fade-in duration-200">
+        <Navbar />
+        <div className="flex-1 flex items-center justify-center">
+          <div className="flex flex-col items-center gap-4">
+            <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+            <p className="text-muted-foreground text-sm">正在加载...</p>
+          </div>
+        </div>
       </div>
     );
   }
@@ -595,41 +592,32 @@ const Index = () => {
     <div className="min-h-screen bg-background flex flex-col">
       <Navbar />
       
-      <main className="flex-1 flex flex-col md:flex-row overflow-auto p-4 gap-4">
-        {isDataLoading ? (
-          <>
-            <ChatSidebarSkeleton />
-            <ChatWindowSkeleton />
-          </>
-        ) : (
-          <>
-            <ChatSidebar
-              bots={bots}
-              chats={chatItems}
-              selectedBotId={selectedBotId}
-              selectedChatId={selectedChatId}
-              onSelectBot={handleSelectBot}
-              onSelectChat={handleSelectChat}
-              onAddBot={() => setShowAddBot(true)}
-              onDeleteBot={handleDeleteBot}
-              onBotUpdated={handleBotUpdated}
-              unreadChats={unreadChats}
-            />
-            
-            <ChatWindow
-              selectedBot={selectedBot}
-              selectedChatId={selectedChatId}
-              messages={filteredMessages.filter(m => m.bot_activation_id === selectedBotId)}
-              onSendMessage={handleSendMessage}
-              enableSound={enableSound}
-              onToggleSound={() => setEnableSound(!enableSound)}
-              soundType={soundType}
-              onSoundTypeChange={setSoundType}
-              onTestSound={playNotificationSound}
-            />
-          </>
-        )}
-      </main>
+      <div className="flex-1 flex flex-col md:flex-row overflow-auto p-4 gap-4">
+        <ChatSidebar
+          bots={bots}
+          chats={chatItems}
+          selectedBotId={selectedBotId}
+          selectedChatId={selectedChatId}
+          onSelectBot={handleSelectBot}
+          onSelectChat={handleSelectChat}
+          onAddBot={() => setShowAddBot(true)}
+          onDeleteBot={handleDeleteBot}
+          onBotUpdated={handleBotUpdated}
+          unreadChats={unreadChats}
+        />
+        
+        <ChatWindow
+          selectedBot={selectedBot}
+          selectedChatId={selectedChatId}
+          messages={filteredMessages.filter(m => m.bot_activation_id === selectedBotId)}
+          onSendMessage={handleSendMessage}
+          enableSound={enableSound}
+          onToggleSound={() => setEnableSound(!enableSound)}
+          soundType={soundType}
+          onSoundTypeChange={setSoundType}
+          onTestSound={playNotificationSound}
+        />
+      </div>
 
       {/* 网站介绍 */}
       <div className="border-t bg-muted/30">
