@@ -1,5 +1,53 @@
 # Telegram 机器人部署说明
 
+## 外部Supabase数据库迁移指南
+
+### 概述
+本文档提供从Lovable Cloud迁移到外部Supabase项目的完整步骤。
+
+### 迁移步骤
+
+#### 1. 创建外部Supabase项目
+1. 访问 https://supabase.com 并创建新项目
+2. 记录项目URL和API密钥（anon key, service role key）
+
+#### 2. 执行数据库迁移
+在Supabase SQL编辑器中按顺序执行以下SQL文件：
+1. `database_migration_schema.sql` - 创建表结构、函数、触发器、RLS策略
+2. `database_migration_data.sql` - 插入现有数据
+
+#### 3. 部署Edge Functions
+将 `supabase/functions/` 目录下的所有函数部署到新项目：
+```bash
+supabase functions deploy manage-bot
+supabase functions deploy telegram-webhook
+supabase functions deploy send-message
+supabase functions deploy get-telegram-image
+supabase functions deploy cleanup-images
+```
+
+#### 4. 配置环境变量
+更新前端 `.env` 文件：
+```
+VITE_SUPABASE_URL=你的新项目URL
+VITE_SUPABASE_PUBLISHABLE_KEY=你的新anon key
+VITE_SUPABASE_PROJECT_ID=你的新项目ID
+```
+
+#### 5. 配置Supabase客户端
+修改 `src/integrations/supabase/client.ts` 使用新的环境变量。
+
+#### 6. 启用Realtime
+在Supabase控制台启用messages和bot_activations表的Realtime功能。
+
+### 注意事项
+- 迁移前确保备份所有数据
+- Edge Functions需要配置相同的环境变量（SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY等）
+- 用户认证数据需要单独处理（auth.users表无法直接迁移，需要用户重新注册）
+- user_roles表中的user_id需要在新项目中重新映射
+
+---
+
 ## ⚠️ 重要提示：24/7运行机器人
 
 **网页版限制：** 当前网页版机器人依赖浏览器轮询，**关闭网页后将无法接收和转发消息**。这是浏览器的技术限制。
