@@ -101,9 +101,6 @@ export const Admin = () => {
   // 禁用用户相关
   const [disabledUsers, setDisabledUsers] = useState<Set<string>>(new Set());
   
-  // 所有注册用户列表
-  const [allUsers, setAllUsers] = useState<{ id: string; email: string; created_at: string }[]>([]);
-  
   // 图片预览相关
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   
@@ -155,7 +152,6 @@ export const Admin = () => {
     loadAllCodes();
     loadAllMessages();
     loadDisabledUsers();
-    loadAllUsers();
     
     // 设置消息实时订阅 - 自动刷新聊天监控
     const messagesChannel = supabase
@@ -208,7 +204,6 @@ export const Admin = () => {
         loadAllCodes(),
         loadAllMessages(),
         loadDisabledUsers(),
-        loadAllUsers(),
       ]);
       toast({
         title: "刷新成功",
@@ -333,27 +328,6 @@ export const Admin = () => {
       }
     } catch (error) {
       console.error('加载禁用用户列表失败:', error);
-    }
-  };
-
-  const loadAllUsers = async () => {
-    if (!session) return;
-    try {
-      const { data, error } = await supabase.functions.invoke('manage-bot', {
-        body: { action: 'list-users' }
-      });
-      
-      if (error) {
-        if (error.message?.includes('403') || error.message?.includes('non-2xx')) {
-          await handleSessionExpired();
-        }
-        throw error;
-      }
-      if (data.ok) {
-        setAllUsers(data.data || []);
-      }
-    } catch (error) {
-      console.error('加载用户列表失败:', error);
     }
   };
 
@@ -955,7 +929,7 @@ export const Admin = () => {
                     <Users className="h-6 w-6 text-blue-600 dark:text-blue-400" />
                   </div>
                   <div>
-                    <div className="text-2xl font-bold">{allUsers.length}</div>
+                    <div className="text-2xl font-bold">{new Set(activations.filter(a => a.user_id).map(a => a.user_id)).size}</div>
                     <div className="text-sm text-muted-foreground">注册用户</div>
                   </div>
                 </div>
@@ -996,49 +970,56 @@ export const Admin = () => {
                     <TableRow>
                       <TableHead>用户邮箱</TableHead>
                       <TableHead>用户ID</TableHead>
-                      <TableHead>注册时间</TableHead>
                       <TableHead>机器人数量</TableHead>
                       <TableHead>状态</TableHead>
                       <TableHead>操作</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {allUsers.map(userData => {
-                      const userBots = realBots.filter(bot => bot.user_id === userData.id);
-                      const authorizedCount = userBots.filter(bot => bot.is_authorized).length;
-                      const isExpanded = expandedUsers.has(userData.id);
-                      
-                      return (
-                        <>
-                          <TableRow key={userData.id}>
-                            <TableCell>
-                              <div className="flex items-center gap-2">
-                                {userData.email || '-'}
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="h-6 w-6 p-0 text-destructive hover:text-destructive"
-                                  onClick={() => {
-                                    if (confirm(`确定要删除用户 ${userData.email || userData.id} 的所有机器人吗？`)) {
-                                      userBots.forEach(bot => {
-                                        supabase.functions.invoke('manage-bot', {
-                                          body: { action: 'delete', id: bot.id }
+                    {(() => {
+                      const userMap = new Map<string, { email?: string; botCount: number; authorizedCount: number; bots: BotActivation[] }>();
+                      realBots.forEach(bot => {
+                        if (bot.user_id) {
+                          const existing = userMap.get(bot.user_id) || { email: bot.user_email, botCount: 0, authorizedCount: 0, bots: [] };
+                          existing.botCount++;
+                          existing.bots.push(bot);
+                          if (bot.is_authorized) existing.authorizedCount++;
+                          if (bot.user_email) existing.email = bot.user_email;
+                          userMap.set(bot.user_id, existing);
+                        }
+                      });
+                      return Array.from(userMap.entries()).map(([userId, info]) => {
+                        const isExpanded = expandedUsers.has(userId);
+                        return (
+                          <>
+                            <TableRow key={userId}>
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  {info.email || '-'}
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-6 w-6 p-0 text-destructive hover:text-destructive"
+                                    onClick={() => {
+                                      if (confirm(`确定要删除用户 ${info.email || userId} 吗？这将解绑该用户的所有机器人。`)) {
+                                        // 解绑该用户所有机器人
+                                        info.bots.forEach(bot => {
+                                          supabase.functions.invoke('manage-bot', {
+                                            body: { action: 'delete', id: bot.id }
+                                          });
                                         });
-                                      });
-                                      loadActivations();
-                                    }
-                                  }}
-                                >
-                                  <Trash2 className="h-3 w-3" />
-                                </Button>
-                              </div>
-                            </TableCell>
-                            <TableCell className="font-mono text-xs">{userData.id.substring(0, 8)}...</TableCell>
-                            <TableCell className="text-xs">{new Date(userData.created_at).toLocaleDateString()}</TableCell>
-                            <TableCell>
-                              <div className="flex items-center gap-2">
-                                {userBots.length}
-                                {userBots.length > 0 && (
+                                        loadActivations();
+                                      }
+                                    }}
+                                  >
+                                    <Trash2 className="h-3 w-3" />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                              <TableCell className="font-mono text-xs">{userId.substring(0, 8)}...</TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  {info.botCount}
                                   <Button
                                     size="sm"
                                     variant="ghost"
@@ -1047,9 +1028,9 @@ export const Admin = () => {
                                       setExpandedUsers(prev => {
                                         const next = new Set(prev);
                                         if (isExpanded) {
-                                          next.delete(userData.id);
+                                          next.delete(userId);
                                         } else {
-                                          next.add(userData.id);
+                                          next.add(userId);
                                         }
                                         return next;
                                       });
@@ -1057,51 +1038,47 @@ export const Admin = () => {
                                   >
                                     {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                                   </Button>
-                                )}
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              {userBots.length > 0 ? (
-                                <Badge variant={authorizedCount > 0 ? "default" : "secondary"}>
-                                  {authorizedCount}/{userBots.length} 已授权
-                                </Badge>
-                              ) : (
-                                <Badge variant="outline">无机器人</Badge>
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex items-center gap-2">
-                                <Switch
-                                  checked={!disabledUsers.has(userData.id)}
-                                  onCheckedChange={() => handleToggleDisableUser(userData.id, disabledUsers.has(userData.id))}
-                                />
-                                <span className="text-xs text-muted-foreground">
-                                  {disabledUsers.has(userData.id) ? '已禁用' : '正常'}
-                                </span>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                          {isExpanded && userBots.map(bot => (
-                            <TableRow key={bot.id} className="bg-muted/30">
-                              <TableCell colSpan={2} className="pl-8">
-                                <span className="font-mono text-xs">{bot.bot_token.substring(0, 20)}...</span>
+                                </div>
                               </TableCell>
                               <TableCell>
-                                <span className="text-xs">{bot.trial_messages_used}/{bot.trial_limit}</span>
-                              </TableCell>
-                              <TableCell>
-                                <Badge variant={bot.is_authorized ? "default" : bot.expire_at && new Date(bot.expire_at) < new Date() ? "destructive" : "secondary"}>
-                                  {bot.is_authorized ? '已激活' : bot.expire_at && new Date(bot.expire_at) < new Date() ? '已过期' : '试用中'}
+                                <Badge variant={info.authorizedCount > 0 ? "default" : "secondary"}>
+                                  {info.authorizedCount}/{info.botCount} 已授权
                                 </Badge>
                               </TableCell>
-                              <TableCell colSpan={2}>
-                                {bot.expire_at ? new Date(bot.expire_at).toLocaleDateString() : '-'}
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  <Switch
+                                    checked={!disabledUsers.has(userId)}
+                                    onCheckedChange={() => handleToggleDisableUser(userId, disabledUsers.has(userId))}
+                                  />
+                                  <span className="text-xs text-muted-foreground">
+                                    {disabledUsers.has(userId) ? '已禁用' : '正常'}
+                                  </span>
+                                </div>
                               </TableCell>
                             </TableRow>
-                          ))}
-                        </>
-                      );
-                    })}
+                            {isExpanded && info.bots.map(bot => (
+                              <TableRow key={bot.id} className="bg-muted/30">
+                                <TableCell colSpan={2} className="pl-8">
+                                  <span className="font-mono text-xs">{bot.bot_token.substring(0, 20)}...</span>
+                                </TableCell>
+                                <TableCell>
+                                  <span className="text-xs">{bot.trial_messages_used}/{bot.trial_limit}</span>
+                                </TableCell>
+                                <TableCell>
+                                  <Badge variant={bot.is_authorized ? "default" : bot.expire_at && new Date(bot.expire_at) < new Date() ? "destructive" : "secondary"}>
+                                    {bot.is_authorized ? '已激活' : bot.expire_at && new Date(bot.expire_at) < new Date() ? '已过期' : '试用中'}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell>
+                                  {bot.expire_at ? new Date(bot.expire_at).toLocaleDateString() : '-'}
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </>
+                        );
+                      });
+                    })()}
                   </TableBody>
                 </Table>
               </ScrollArea>
