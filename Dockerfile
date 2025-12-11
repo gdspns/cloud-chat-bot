@@ -14,12 +14,4 @@ RUN npm run build
 
 FROM zeabur/caddy-static
 
-# 创建自定义 Caddyfile 以支持 SPA 路由
-RUN echo ':8080 {\n\
-    root * /usr/share/caddy\n\
-    encode gzip\n\
-    try_files {path} /index.html\n\
-    file_server\n\
-}' > /etc/caddy/Caddyfile
-
 COPY --from=build /src/dist /usr/share/caddy
