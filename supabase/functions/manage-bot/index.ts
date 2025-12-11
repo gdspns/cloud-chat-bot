@@ -16,7 +16,6 @@ const ADMIN_ACTIONS = [
   'generate-codes',
   'toggle-user-disabled',
   'list-disabled-users',
-  'list-users',
   'list',
   'admin-delete', // 管理员删除
   'toggle',
@@ -142,21 +141,6 @@ serve(async (req) => {
           .maybeSingle();
 
         if (existing) {
-          // 如果已存在且 user_id 为空，但当前有用户登录，则更新 user_id
-          if (!existing.user_id && userId) {
-            const { data: updatedBot, error: updateError } = await supabase
-              .from('bot_activations')
-              .update({ user_id: userId })
-              .eq('id', existing.id)
-              .select()
-              .single();
-            
-            if (!updateError && updatedBot) {
-              return new Response(JSON.stringify({ ok: true, data: updatedBot, existed: true, claimed: true }), {
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-              });
-            }
-          }
           // 已存在则返回现有数据
           return new Response(JSON.stringify({ ok: true, data: existing, existed: true }), {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -1009,38 +993,6 @@ serve(async (req) => {
         return new Response(JSON.stringify({ ok: true, data }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
-      }
-
-      // 获取所有注册用户列表（管理员用）
-      case 'list-users': {
-        try {
-          // 使用 admin API 获取所有用户
-          const { data: { users }, error } = await supabase.auth.admin.listUsers();
-          
-          if (error) {
-            return new Response(JSON.stringify({ ok: false, error: error.message }), {
-              status: 400,
-              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            });
-          }
-
-          // 返回用户基本信息
-          const userData = users.map(u => ({
-            id: u.id,
-            email: u.email,
-            created_at: u.created_at,
-          }));
-
-          return new Response(JSON.stringify({ ok: true, data: userData }), {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          });
-        } catch (err) {
-          console.error('List users error:', err);
-          return new Response(JSON.stringify({ ok: false, error: '获取用户列表失败' }), {
-            status: 500,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          });
-        }
       }
 
       default:
