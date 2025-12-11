@@ -23,17 +23,22 @@ export const UserCenter = () => {
   const [isUserDisabled, setIsUserDisabled] = useState(false);
   const { toast } = useToast();
 
-  // 检查用户登录状态 - 移除 toast 避免闪烁
+  // 检查用户登录状态
   useEffect(() => {
     if (authLoading) return;
     
     if (!user) {
-      navigate('/auth', { replace: true });
+      toast({
+        title: "未登录",
+        description: "请先登录",
+        variant: "destructive",
+      });
+      navigate('/auth');
       return;
     }
     
     setIsLoading(false);
-  }, [user, authLoading, navigate]);
+  }, [user, authLoading, navigate, toast]);
 
   // 加载用户的机器人和禁用状态
   useEffect(() => {
@@ -236,17 +241,10 @@ export const UserCenter = () => {
     return date.toLocaleDateString('zh-CN');
   };
 
-  // 显示骨架屏避免白屏
   if (authLoading || isLoading) {
     return (
-      <div className="min-h-screen bg-background flex flex-col animate-in fade-in duration-200">
-        <Navbar />
-        <div className="flex-1 flex items-center justify-center">
-          <div className="flex flex-col items-center gap-4">
-            <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-            <p className="text-muted-foreground text-sm">正在加载...</p>
-          </div>
-        </div>
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <p>加载中...</p>
       </div>
     );
   }
