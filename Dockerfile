@@ -30,10 +30,6 @@ RUN echo 'server { \
     gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript; \
 }' > /etc/nginx/conf.d/default.conf
 
-location / {
-    try_files $uri $uri/ /index.html;
-}
-
 EXPOSE 8080
 
 CMD ["nginx", "-g", "daemon off;"]
