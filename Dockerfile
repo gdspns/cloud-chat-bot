@@ -1,13 +1,19 @@
-FROM node:22-alpine AS builder
+FROM node:22-slim AS build
 LABEL "language"="nodejs"
 LABEL "framework"="vite"
 
-WORKDIR /app
-COPY package*.json ./
+WORKDIR /src
+
+RUN npm install -g npm@latest
+
+COPY package.json package-lock.json ./
 RUN npm install
+
 COPY . .
 RUN npm run build
 
 FROM zeabur/caddy-static
-COPY --from=builder /app/dist /usr/share/caddy
-COPY Caddyfile /etc/caddy/Caddyfile
+
+COPY --from=build /src/dist /usr/share/caddy
+
+EXPOSE 8080
