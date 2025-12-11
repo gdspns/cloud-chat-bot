@@ -142,6 +142,21 @@ serve(async (req) => {
           .maybeSingle();
 
         if (existing) {
+          // 如果已存在且 user_id 为空，但当前有用户登录，则更新 user_id
+          if (!existing.user_id && userId) {
+            const { data: updatedBot, error: updateError } = await supabase
+              .from('bot_activations')
+              .update({ user_id: userId })
+              .eq('id', existing.id)
+              .select()
+              .single();
+            
+            if (!updateError && updatedBot) {
+              return new Response(JSON.stringify({ ok: true, data: updatedBot, existed: true, claimed: true }), {
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+              });
+            }
+          }
           // 已存在则返回现有数据
           return new Response(JSON.stringify({ ok: true, data: existing, existed: true }), {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
