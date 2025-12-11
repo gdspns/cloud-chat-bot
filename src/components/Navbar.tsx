@@ -11,7 +11,8 @@ export const Navbar = () => {
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
-    navigate('/');
+    // 使用 replace 避免白屏闪烁
+    navigate('/', { replace: true });
   };
   
   return (
