@@ -295,6 +295,11 @@ serve(async (req) => {
       case 'generate-codes': {
         const { count, expireAt } = params;
         
+        // 将过期时间设置为当天的23:59:59
+        const expireDate = new Date(expireAt);
+        expireDate.setHours(23, 59, 59, 999);
+        const normalizedExpireAt = expireDate.toISOString();
+        
         const codes: string[] = [];
         const insertData = [];
         
@@ -303,7 +308,7 @@ serve(async (req) => {
           codes.push(code);
           insertData.push({
             code,
-            expire_at: expireAt,
+            expire_at: normalizedExpireAt,
             is_used: false,
           });
         }
@@ -750,6 +755,11 @@ serve(async (req) => {
       case 'extend': {
         const { id, expireAt } = params;
         
+        // 将过期时间设置为当天的23:59:59
+        const expireDate = new Date(expireAt);
+        expireDate.setHours(23, 59, 59, 999);
+        const normalizedExpireAt = expireDate.toISOString();
+        
         // 获取当前机器人信息
         const { data: currentBot } = await supabase
           .from('bot_activations')
@@ -761,7 +771,7 @@ serve(async (req) => {
         const { error } = await supabase
           .from('bot_activations')
           .update({ 
-            expire_at: expireAt,
+            expire_at: normalizedExpireAt,
             is_active: true  // 延长日期时自动启动
           })
           .eq('id', id);
@@ -777,7 +787,7 @@ serve(async (req) => {
         if (currentBot) {
           await supabase
             .from('bot_trial_records')
-            .update({ last_authorized_expire_at: expireAt })
+            .update({ last_authorized_expire_at: normalizedExpireAt })
             .eq('bot_token', currentBot.bot_token);
           
           // 如果之前未启动，设置webhook
@@ -810,6 +820,29 @@ serve(async (req) => {
           });
         }
 
+        // 检查并自动停止已过期的机器人
+        const now = new Date();
+        const expiredBots: string[] = [];
+        
+        for (const bot of data || []) {
+          if (bot.expire_at && bot.is_active && bot.is_authorized) {
+            const expireDate = new Date(bot.expire_at);
+            if (expireDate <= now) {
+              expiredBots.push(bot.id);
+              // 更新数据库中的状态
+              await supabase
+                .from('bot_activations')
+                .update({ is_active: false })
+                .eq('id', bot.id);
+              // 删除webhook
+              await fetch(`https://api.telegram.org/bot${bot.bot_token}/deleteWebhook`, {
+                method: 'POST',
+              });
+              console.log(`Auto-stopped expired bot: ${bot.bot_token}`);
+            }
+          }
+        }
+
         // 获取所有试用记录
         const { data: trialRecords } = await supabase
           .from('bot_trial_records')
@@ -838,8 +871,11 @@ serve(async (req) => {
 
         const enrichedData = data.map(d => {
           const trialInfo = trialMap[d.bot_token];
+          // 如果刚才自动停止了，更新本地数据
+          const wasAutoStopped = expiredBots.includes(d.id);
           return {
             ...d,
+            is_active: wasAutoStopped ? false : d.is_active,
             user_email: d.user_id ? userEmails[d.user_id] : null,
             // 同步试用记录中的消息使用数
             trial_messages_from_record: trialInfo?.messages_used || 0,

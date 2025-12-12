@@ -650,8 +650,12 @@ export const Admin = () => {
 
   const handleExtendDate = async (id: string, newDate: string) => {
     try {
+      // 设置为当天的23:59:59
+      const expireDate = new Date(newDate);
+      expireDate.setHours(23, 59, 59, 999);
+      
       const { data, error } = await supabase.functions.invoke('manage-bot', {
-        body: { action: 'extend', id, expireAt: new Date(newDate).toISOString() }
+        body: { action: 'extend', id, expireAt: expireDate.toISOString() }
       });
       
       if (error) throw error;
@@ -659,7 +663,7 @@ export const Admin = () => {
       
       toast({
         title: "日期已更新",
-        description: "过期日期已延长",
+        description: "过期日期已延长，机器人已自动启动",
       });
       loadActivations();
     } catch (error: any) {
