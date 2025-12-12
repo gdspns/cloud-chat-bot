@@ -451,9 +451,9 @@ const Index = () => {
 
     const currentBot = bots.find(b => b.id === selectedBotId);
     
-    // 检查 web 端口
+    // 检查 web 端口 - 静默失败，不显示提示
     if (currentBot && !currentBot.web_enabled) {
-      return { error: "Web端口已关闭，无法发送消息" };
+      return {};
     }
     
     // 检查试用限制

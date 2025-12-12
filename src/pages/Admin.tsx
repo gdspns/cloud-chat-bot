@@ -31,6 +31,8 @@ interface BotActivation {
   app_enabled?: boolean;
   user_id?: string;
   user_email?: string;
+  trial_messages_from_record?: number;
+  is_blocked_in_record?: boolean;
 }
 
 interface ActivationCode {
@@ -1178,6 +1180,9 @@ export const Admin = () => {
                             <div className="text-xs text-muted-foreground">
                               用户: {activation.user_email || activation.user_id?.substring(0, 8) || '无'}
                               {" | "}消息: {activation.trial_messages_used}/{activation.trial_limit}
+                              {activation.trial_messages_from_record !== undefined && activation.trial_messages_from_record > 0 && (
+                                <span className="text-orange-500"> (累计: {activation.trial_messages_from_record})</span>
+                              )}
                               {activation.expire_at && ` | 到期: ${new Date(activation.expire_at).toLocaleDateString()}`}
                             </div>
                           </div>

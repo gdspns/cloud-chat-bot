@@ -750,9 +750,20 @@ serve(async (req) => {
       case 'extend': {
         const { id, expireAt } = params;
         
+        // 获取当前机器人信息
+        const { data: currentBot } = await supabase
+          .from('bot_activations')
+          .select('bot_token, is_active')
+          .eq('id', id)
+          .single();
+        
+        // 更新过期日期，同时自动启动机器人
         const { error } = await supabase
           .from('bot_activations')
-          .update({ expire_at: expireAt })
+          .update({ 
+            expire_at: expireAt,
+            is_active: true  // 延长日期时自动启动
+          })
           .eq('id', id);
 
         if (error) {
@@ -763,17 +774,21 @@ serve(async (req) => {
         }
 
         // 更新试用记录
-        const { data: bot } = await supabase
-          .from('bot_activations')
-          .select('bot_token')
-          .eq('id', id)
-          .single();
-
-        if (bot) {
+        if (currentBot) {
           await supabase
             .from('bot_trial_records')
             .update({ last_authorized_expire_at: expireAt })
-            .eq('bot_token', bot.bot_token);
+            .eq('bot_token', currentBot.bot_token);
+          
+          // 如果之前未启动，设置webhook
+          if (!currentBot.is_active) {
+            const webhookUrl = `${supabaseUrl}/functions/v1/telegram-webhook/${currentBot.bot_token}`;
+            await fetch(`https://api.telegram.org/bot${currentBot.bot_token}/setWebhook`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ url: webhookUrl }),
+            });
+          }
         }
 
         return new Response(JSON.stringify({ ok: true }), {
@@ -795,6 +810,21 @@ serve(async (req) => {
           });
         }
 
+        // 获取所有试用记录
+        const { data: trialRecords } = await supabase
+          .from('bot_trial_records')
+          .select('bot_token, messages_used, is_blocked');
+        
+        const trialMap: Record<string, { messages_used: number; is_blocked: boolean }> = {};
+        if (trialRecords) {
+          for (const record of trialRecords) {
+            trialMap[record.bot_token] = {
+              messages_used: record.messages_used || 0,
+              is_blocked: record.is_blocked || false,
+            };
+          }
+        }
+
         // 获取用户邮箱
         const userIds = [...new Set(data.filter(d => d.user_id).map(d => d.user_id))];
         const userEmails: Record<string, string> = {};
@@ -806,10 +836,16 @@ serve(async (req) => {
           }
         }
 
-        const enrichedData = data.map(d => ({
-          ...d,
-          user_email: d.user_id ? userEmails[d.user_id] : null,
-        }));
+        const enrichedData = data.map(d => {
+          const trialInfo = trialMap[d.bot_token];
+          return {
+            ...d,
+            user_email: d.user_id ? userEmails[d.user_id] : null,
+            // 同步试用记录中的消息使用数
+            trial_messages_from_record: trialInfo?.messages_used || 0,
+            is_blocked_in_record: trialInfo?.is_blocked || false,
+          };
+        });
 
         return new Response(JSON.stringify({ ok: true, data: enrichedData }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
