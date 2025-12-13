@@ -97,7 +97,7 @@ export const AddBotDialog = ({ open, onOpenChange, onBotAdded, userId }: AddBotD
               onChange={(e) => setBotToken(e.target.value)}
             />
             <p className="text-xs text-muted-foreground">
-              从 @BotFather 获取的机器人令牌
+              从t.me/BotFather 获取的机器人令牌
             </p>
           </div>
           
@@ -110,7 +110,7 @@ export const AddBotDialog = ({ open, onOpenChange, onBotAdded, userId }: AddBotD
               onChange={(e) => setPersonalUserId(e.target.value)}
             />
             <p className="text-xs text-muted-foreground">
-              用于接收消息转发，可从 @userinfobot 获取
+              用于接收消息转发，可从t.me/userinfobot获取
             </p>
           </div>
           
