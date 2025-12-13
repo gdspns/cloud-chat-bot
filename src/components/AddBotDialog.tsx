@@ -110,7 +110,7 @@ export const AddBotDialog = ({ open, onOpenChange, onBotAdded, userId }: AddBotD
               onChange={(e) => setPersonalUserId(e.target.value)}
             />
             <p className="text-xs text-muted-foreground">
-              用于接收消息转发，可从 @userinfobot 获取，复制浏览器跳转 t.me/userinfobot
+              从 @userinfobot 获取复制ID，复制浏览器跳转 t.me/userinfobot
             </p>
           </div>
           
